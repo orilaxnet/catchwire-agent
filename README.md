@@ -12,6 +12,21 @@
 
 ---
 
+## Live Demo
+
+Try the agent with pre-loaded demo data — no sign-up required.
+
+**[https://catchwire.synthesislogic.com/agent](https://catchwire.synthesislogic.com/agent)**
+
+| Field | Value |
+|---|---|
+| Username | `admin` |
+| Password | `admin1234` |
+
+The demo inbox contains sample emails across multiple intents (support, billing, security, scheduling), pre-configured webhooks, sender overrides, AI prompt profiles, and 30 days of analytics data.
+
+---
+
 ## What Is It?
 
 Catchwire Agent is a self-hosted AI email assistant. It connects to your Gmail or IMAP inbox, reads incoming emails, classifies them by intent and priority, generates context-aware replies using any major LLM, and either sends them automatically or queues them for your review.
