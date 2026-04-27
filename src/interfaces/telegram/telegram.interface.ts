@@ -54,8 +54,8 @@ export class TelegramInterface implements IUserInterface {
     this.bot.on('callback_query', (ctx) => callbackHandler.handle(ctx));
     this.bot.on('text',           (ctx) => this.handleText(ctx));
 
-    // Launch
-    await this.bot.launch();
+    // Launch without await — bot.launch() in Telegraf v4 runs indefinitely
+    this.bot.launch().catch((err) => logger.error('Telegram bot crashed', err));
     logger.info('Telegram bot launched');
   }
 
