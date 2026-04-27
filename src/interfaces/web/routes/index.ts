@@ -215,4 +215,15 @@ router.get('/accounts/:id/persona', async (req, res) => {
   }
 });
 
+// ── Integrations info ───────────────────────────────────────────────────────
+
+router.get('/integrations', (_req, res) => {
+  res.json({
+    telegramEnabled: !!process.env.TELEGRAM_BOT_TOKEN,
+    smtpEnabled:     !!process.env.SMTP_PORT || true,
+    smtpPort:        Number(process.env.SMTP_PORT ?? 2525),
+    apiBaseUrl:      process.env.PUBLIC_URL ?? '',
+  });
+});
+
 export default router;

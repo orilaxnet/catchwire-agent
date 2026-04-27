@@ -294,6 +294,10 @@ export const api = {
       }),
   },
 
+  integrations: {
+    info: () => req<{ telegramEnabled: boolean; smtpEnabled: boolean; smtpPort: number; apiBaseUrl: string }>('/integrations'),
+  },
+
   plugins: {
     list:    ()                            => req<any[]>('/plugins'),
     build:   (description: string, accountId: string) =>

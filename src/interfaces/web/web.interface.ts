@@ -104,10 +104,10 @@ export class WebInterface implements IUserInterface {
         'Content-Security-Policy',
         "default-src 'self'; " +
         "script-src 'self'; " +
-        "style-src 'self' 'unsafe-inline'; " +
-        "img-src 'self' data:; " +
-        "connect-src 'self' wss:; " +
-        "font-src 'self'; " +
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+        "img-src 'self' data: https:; " +
+        "connect-src 'self' wss: wss://*; " +
+        "font-src 'self' https://fonts.gstatic.com; " +
         "frame-ancestors 'none'; " +
         "base-uri 'self'; " +
         "form-action 'self';"

@@ -43,6 +43,11 @@ export function Settings() {
   const loadingP   = useSignal(false);
   const showKey    = useSignal(false);
 
+  const telegramEnabled = useSignal(false);
+  const smtpPort        = useSignal(2525);
+  const apiBaseUrl      = useSignal('');
+  const copiedField     = useSignal('');
+
   const showAddAcc = useSignal(false);
   const newEmail   = useSignal('');
   const newDisplay = useSignal('');
@@ -53,6 +58,21 @@ export function Settings() {
   const imapPass   = useSignal('');
   const addingAcc  = useSignal(false);
   const addAccErr  = useSignal('');
+
+  useEffect(() => {
+    api.integrations.info().then((info) => {
+      telegramEnabled.value = info.telegramEnabled;
+      smtpPort.value        = info.smtpPort;
+      apiBaseUrl.value      = info.apiBaseUrl || window.location.origin;
+    }).catch(() => { apiBaseUrl.value = window.location.origin; });
+  }, []);
+
+  const copyToClipboard = (text: string, field: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      copiedField.value = field;
+      setTimeout(() => { copiedField.value = ''; }, 2000);
+    });
+  };
 
   useEffect(() => {
     if (!selectedAccount.value) return;
@@ -221,6 +241,114 @@ export function Settings() {
               </div>
             </div>
           )}
+        </section>
+
+        {/* ── Integrations ── */}
+        <div class="divider" style="margin-bottom:24px" />
+        <section style="margin-bottom:32px">
+          <div class="section-header" style="margin-bottom:16px">Integrations</div>
+
+          {/* n8n / API */}
+          <div class="card" style="margin-bottom:12px;padding:16px 18px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+              <span class="material-symbols-rounded" style="color:var(--accent);font-size:20px">webhook</span>
+              <div>
+                <div style="font-size:13px;font-weight:600">n8n / Make / External Agents</div>
+                <div style="font-size:11px;color:var(--text-muted)">Connect any automation tool via REST API + webhooks</div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              {[
+                { label: 'API Base URL', value: `${apiBaseUrl.value}/api`, field: 'apibase' },
+                { label: 'Auth endpoint', value: `POST ${apiBaseUrl.value}/api/auth/login`, field: 'auth' },
+              ].map(({ label, value, field }) => (
+                <div key={field}>
+                  <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">{label}</div>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <code style="flex:1;font-size:11px;background:var(--surface-3,var(--surface-2));padding:6px 10px;border-radius:var(--r-sm,6px);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                      {value}
+                    </code>
+                    <button class="btn btn-ghost" style="height:28px;padding:0 8px;min-width:0"
+                      onClick={() => copyToClipboard(value, field)}
+                      title="Copy">
+                      <span class="material-symbols-rounded" style="font-size:14px">
+                        {copiedField.value === field ? 'check' : 'content_copy'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <div style="font-size:11px;color:var(--text-muted);margin-top:4px;padding:8px 10px;background:var(--surface-2);border-radius:var(--r-sm,6px);line-height:1.6">
+                1. POST <code>/api/auth/login</code> → get <code>token</code><br/>
+                2. Add <code>Authorization: Bearer &lt;token&gt;</code> to requests<br/>
+                3. Register a webhook at <a href="/agent/webhooks" style="color:var(--accent)">Webhooks</a> to receive real-time events
+              </div>
+            </div>
+          </div>
+
+          {/* Telegram */}
+          <div class="card" style="margin-bottom:12px;padding:16px 18px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+              <span class="material-symbols-rounded" style="color:var(--accent);font-size:20px">send</span>
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:600">Telegram Bot</div>
+                <div style="font-size:11px;color:var(--text-muted)">Approve / reject replies from your phone</div>
+              </div>
+              <div style={`font-size:10px;font-weight:600;padding:3px 8px;border-radius:99px;
+                background:${telegramEnabled.value ? 'var(--c-low-bg,#1a2e1a)' : 'var(--surface-2)'};
+                color:${telegramEnabled.value ? 'var(--c-low,#4caf50)' : 'var(--text-muted)'}`}>
+                {telegramEnabled.value ? 'ACTIVE' : 'NOT CONFIGURED'}
+              </div>
+            </div>
+            {telegramEnabled.value ? (
+              <div style="font-size:11px;color:var(--text-muted);line-height:1.7">
+                Bot is running. Open Telegram and find your bot.<br/>
+                <strong style="color:var(--text)">Commands:</strong><br/>
+                <code>/start</code> — welcome &amp; connect account<br/>
+                <code>/settings</code> — change LLM, tone, autonomy<br/>
+                <code>/setmodel &lt;name&gt;</code> — switch model<br/>
+                <code>/analytics</code> — 7-day stats<br/>
+                <code>/addaccount</code> — add another inbox<br/>
+                <code>/setstyle</code> — teach your writing style<br/>
+                <code>/help</code> — full command list
+              </div>
+            ) : (
+              <div style="font-size:11px;color:var(--text-muted);line-height:1.7">
+                Set <code>TELEGRAM_BOT_TOKEN</code> in your <code>.env</code> file to enable.<br/>
+                Get a token from <a href="https://t.me/BotFather" target="_blank" style="color:var(--accent)">@BotFather</a> on Telegram.<br/>
+                Optionally set <code>TELEGRAM_ALLOWED_USERS</code> to a comma-separated list of Telegram user IDs to restrict access.
+              </div>
+            )}
+          </div>
+
+          {/* SMTP Forward */}
+          <div class="card" style="padding:16px 18px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+              <span class="material-symbols-rounded" style="color:var(--accent);font-size:20px">forward_to_inbox</span>
+              <div>
+                <div style="font-size:13px;font-weight:600">Email Forwarding (SMTP)</div>
+                <div style="font-size:11px;color:var(--text-muted)">Forward any email directly to the agent</div>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">Forward to</div>
+              <div style="display:flex;align-items:center;gap:6px">
+                <code style="flex:1;font-size:11px;background:var(--surface-2);padding:6px 10px;border-radius:var(--r-sm,6px);font-family:var(--mono)">
+                  {apiBaseUrl.value.replace(/^https?:\/\//, '')} port {smtpPort.value}
+                </code>
+                <button class="btn btn-ghost" style="height:28px;padding:0 8px;min-width:0"
+                  onClick={() => copyToClipboard(`${apiBaseUrl.value.replace(/^https?:\/\//, '')}:${smtpPort.value}`, 'smtp')}
+                  title="Copy">
+                  <span class="material-symbols-rounded" style="font-size:14px">
+                    {copiedField.value === 'smtp' ? 'check' : 'content_copy'}
+                  </span>
+                </button>
+              </div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:6px">
+                Set up a forwarding rule in Gmail / Outlook to forward emails to this address.
+              </div>
+            </div>
+          </div>
         </section>
 
         {selectedAccount.value && (
