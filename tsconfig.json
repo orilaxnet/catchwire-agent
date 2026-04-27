@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@interfaces/*": ["./src/interfaces/*"],
+      "@ingestion/*": ["./src/ingestion/*"],
+      "@parser/*": ["./src/parser/*"],
+      "@llm/*": ["./src/llm/*"],
+      "@action/*": ["./src/action/*"],
+      "@persona/*": ["./src/persona/*"],
+      "@template/*": ["./src/template/*"],
+      "@context/*": ["./src/context/*"],
+      "@feedback/*": ["./src/feedback/*"],
+      "@storage/*": ["./src/storage/*"],
+      "@security/*": ["./src/security/*"],
+      "@plugins/*": ["./src/plugins/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@types/*": ["./src/types/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "tests"]
+}

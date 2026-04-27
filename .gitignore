@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+
+# Environment (هرگز commit نشود!)
+.env
+.env.local
+.env.*.local
+
+# Database files
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V8
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+coverage/
+.nyc_output/
+
+# Credentials
+*.pem
+*.key
+*.cert
+google-service-account.json
+credentials.json
+
+# Backups
+backups/
+
+# Uploads
+uploads/
+
+# Cache
+.cache/
+.turbo/
+
+# Internal docs — not published
+docs/

@@ -1,0 +1,87 @@
+version: '3.9'
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+      - "2525:2525"
+    volumes:
+      - app_data:/app/data
+    env_file: ../.env
+    environment:
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-sqlite}
+      - SQLITE_PATH=/app/data/email_agent.db
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles: ["full"]
+
+  app-lite:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+      - "2525:2525"
+    volumes:
+      - app_data:/app/data
+    env_file: ../.env
+    environment:
+      - STORAGE_BACKEND=sqlite
+      - SQLITE_PATH=/app/data/email_agent.db
+    profiles: ["lite"]
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       email_agent
+      POSTGRES_USER:     agent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d email_agent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles: ["full"]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    profiles: ["full"]
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - nginx_certs:/etc/letsencrypt
+    depends_on:
+      - app
+    profiles: ["full"]
+
+volumes:
+  app_data:
+  pg_data:
+  redis_data:
+  nginx_certs:
