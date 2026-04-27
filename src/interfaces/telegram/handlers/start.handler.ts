@@ -28,15 +28,16 @@ export class StartHandler {
 
   async handleHelp(ctx: Context): Promise<void> {
     await ctx.reply(
-      `📖 *Email Agent Help*\n\n` +
+      `📖 *Catchwire Agent — Help*\n\n` +
+      `/webapp — open web inbox with one tap (magic link)\n` +
       `/addaccount — connect an email account\n` +
       `/setllm — choose your AI model\n` +
+      `/setmodel <name> — set model name\n` +
       `/setstyle — teach the agent your writing style\n` +
-      `/plugin — build or manage plugins\n` +
-      `/settings — full settings\n` +
-      `/analytics — weekly stats\n` +
+      `/settings — autonomy, tone, LLM config\n` +
+      `/analytics — 7-day stats\n` +
       `/deleteall — delete all your data\n\n` +
-      `To process emails, forward them to your agent address.`,
+      `💡 Tip: use /webapp to open the full dashboard without a password.`,
       { parse_mode: 'Markdown' },
     );
   }

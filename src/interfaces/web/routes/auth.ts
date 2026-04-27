@@ -191,6 +191,73 @@ router.post('/auth/telegram', rateLimitMiddleware('auth_attempts'), async (req, 
   }
 });
 
+// ── POST /auth/magic/generate — bot calls this to make a link ───────────────
+// Internal: only callable with a valid JWT (bot uses a system token)
+
+router.post('/auth/magic/generate', rateLimitMiddleware('auth_attempts'), async (req, res) => {
+  const { telegramId } = req.body as { telegramId?: string };
+  if (!telegramId) { res.status(400).json({ error: 'telegramId required' }); return; }
+
+  try {
+    const { pool } = await getPool();
+    const { rows } = await pool.query(
+      `SELECT id FROM users WHERE telegram_id = $1`, [telegramId]
+    );
+    const user = rows[0] as { id: string } | undefined;
+    if (!user) { res.status(404).json({ error: 'User not found — run /start first' }); return; }
+
+    const { randomBytes } = await import('crypto');
+    const magic    = randomBytes(24).toString('hex');
+    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 min
+
+    await pool.query(
+      `INSERT INTO kv_store (collection, id, data)
+       VALUES ('magic_link', $1, $2)
+       ON CONFLICT (collection, id) DO UPDATE SET data = EXCLUDED.data`,
+      [magic, JSON.stringify({ userId: user.id, expiresAt })]
+    );
+
+    res.json({ magic, expiresAt });
+  } catch (err) {
+    logger.error('Magic link generation failed', { err });
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
+// ── GET /auth/magic/redeem?token=xxx — web app calls this to exchange token ─
+
+router.get('/auth/magic/redeem', rateLimitMiddleware('auth_attempts'), async (req, res) => {
+  const magic = req.query.token as string;
+  if (!magic || magic.length < 10) { res.status(400).json({ error: 'Invalid token' }); return; }
+
+  try {
+    const { pool } = await getPool();
+    const { rows } = await pool.query(
+      `SELECT data FROM kv_store WHERE collection = 'magic_link' AND id = $1`, [magic]
+    );
+
+    if (!rows[0]) { res.status(401).json({ error: 'Invalid or expired link' }); return; }
+
+    const { userId, expiresAt } = rows[0].data as { userId: string; expiresAt: number };
+
+    if (Date.now() > expiresAt) {
+      await pool.query(`DELETE FROM kv_store WHERE collection = 'magic_link' AND id = $1`, [magic]);
+      res.status(401).json({ error: 'Link has expired — request a new one with /webapp' });
+      return;
+    }
+
+    // Single-use: delete immediately
+    await pool.query(`DELETE FROM kv_store WHERE collection = 'magic_link' AND id = $1`, [magic]);
+
+    const token = signToken({ sub: userId, telegramId: '' });
+    logger.info('Magic link redeemed', { userId });
+    res.json({ token, expiresIn: 3_600 });
+  } catch (err) {
+    logger.error('Magic link redeem failed', { err });
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
 // ── Pool helper ─────────────────────────────────────────────────────────────
 
 let _pool: any;

@@ -625,3 +625,5 @@ input.md-input, select.md-input, textarea.md-input {
   :root { --nav-w: 0px; }
   .nav-rail { display: none; }
 }
+
+@keyframes spin { to { transform: rotate(360deg); } }

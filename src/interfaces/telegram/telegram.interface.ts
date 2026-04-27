@@ -49,6 +49,7 @@ export class TelegramInterface implements IUserInterface {
     this.bot.command('settings',    (ctx) => settingsHandler.handleMenu(ctx));
     this.bot.command('analytics',   (ctx) => settingsHandler.handleAnalytics(ctx));
     this.bot.command('deleteall',   (ctx) => settingsHandler.handleDeleteAll(ctx));
+    this.bot.command('webapp',      (ctx) => this.handleWebApp(ctx));
     this.bot.command('help',        (ctx) => startHandler.handleHelp(ctx));
 
     this.bot.on('callback_query', (ctx) => callbackHandler.handle(ctx));
@@ -123,6 +124,43 @@ export class TelegramInterface implements IUserInterface {
       data:          { text, messageId: (ctx.message as any)?.message_id },
       timestamp:     new Date(),
     });
+  }
+
+  private async handleWebApp(ctx: Context): Promise<void> {
+    const telegramId = String(ctx.from?.id);
+    const baseUrl    = process.env.PUBLIC_URL || 'https://catchwire.synthesislogic.com';
+
+    try {
+      const res = await fetch(`http://localhost:${process.env.PORT ?? 3000}/api/auth/magic/generate`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ telegramId }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        await ctx.reply(`❌ ${err.error ?? 'Could not generate link'}\n\nRun /start first to register.`);
+        return;
+      }
+
+      const { magic } = await res.json() as { magic: string };
+      const link = `${baseUrl}/agent/inbox?magic=${magic}`;
+
+      await ctx.reply(
+        `🔗 *Open Web App*\n\nTap the link below to log in instantly:\n${link}\n\n_Link expires in 10 minutes and can only be used once._`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🌐 Open Inbox', url: link },
+            ]],
+          },
+        }
+      );
+    } catch (err) {
+      logger.error('handleWebApp failed', err as Error);
+      await ctx.reply('❌ Could not generate link. Please try again.');
+    }
   }
 
   getBotInstance(): Telegraf {

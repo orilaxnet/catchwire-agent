@@ -128,10 +128,33 @@ const PAGE_INFO: Record<string, PageInfoContent> = {
 };
 
 export function App() {
-  const path          = useSignal(window.location.pathname);
-  const authed        = useSignal(!!getToken());
-  const accsLoaded    = useSignal(false);
+  const path           = useSignal(window.location.pathname);
+  const authed         = useSignal(!!getToken());
+  const accsLoaded     = useSignal(false);
   const showOnboarding = useSignal(false);
+  const magicPending   = useSignal(false);
+
+  // Magic link auto-login: ?magic=<token> in URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const magic  = params.get('magic');
+    if (!magic || authed.value) return;
+
+    magicPending.value = true;
+    fetch(`/api/auth/magic/redeem?token=${encodeURIComponent(magic)}`)
+      .then((r) => r.json())
+      .then((data: any) => {
+        if (data.token) {
+          setToken(data.token);
+          authed.value = true;
+          // Strip magic param from URL without reload
+          const clean = window.location.pathname;
+          window.history.replaceState({}, '', clean);
+        }
+      })
+      .catch(console.error)
+      .finally(() => { magicPending.value = false; });
+  }, []);
 
   useEffect(() => {
     const onLogout = () => { clearToken(); authed.value = false; };
@@ -153,8 +176,17 @@ export function App() {
     }).catch(console.error);
   }, [authed.value]);
 
+  if (magicPending.value) {
+    return (
+      <div style="height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;background:var(--surface-1)">
+        <span class="material-symbols-rounded" style="font-size:40px;color:var(--accent);animation:spin 1s linear infinite">sync</span>
+        <div style="font-size:14px;color:var(--text-muted)">Signing you in…</div>
+      </div>
+    );
+  }
+
   if (!authed.value) {
-    return <Login onLogin={() => { 
+    return <Login onLogin={() => {
       authed.value = true;
       if (path.value.includes('login') || path.value === '/agent' || path.value === '/agent/' || path.value === '/') {
          path.value = '/agent/inbox';
