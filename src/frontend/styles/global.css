@@ -627,3 +627,30 @@ input.md-input, select.md-input, textarea.md-input {
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Demo banner ── */
+.demo-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 16px;
+  background: #1a1a2e;
+  color: #a0a8c0;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.demo-banner a {
+  color: var(--accent, #7c83ff);
+  text-decoration: none;
+  font-weight: 500;
+}
+.demo-banner a:hover { text-decoration: underline; }
+
+/* Push app-shell down when banner is visible */
+.app-shell.demo-offset { padding-top: 33px; }

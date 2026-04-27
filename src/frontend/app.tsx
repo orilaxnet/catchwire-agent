@@ -19,7 +19,7 @@ import { Login }            from './pages/Login.tsx';
 import { EmailTemplates }   from './pages/EmailTemplates.tsx';
 import { Onboarding }       from './pages/Onboarding.tsx';
 import { accounts, selectedAccount } from './signals/store.ts';
-import { api, getToken, clearToken } from './api/client.ts';
+import { api, getToken, setToken, clearToken } from './api/client.ts';
 import './styles/global.css';
 
 const PAGE_TITLES: Record<string, string> = {
@@ -133,6 +133,7 @@ export function App() {
   const accsLoaded     = useSignal(false);
   const showOnboarding = useSignal(false);
   const magicPending   = useSignal(false);
+  const isDemo         = useSignal(false);
 
   // Magic link auto-login: ?magic=<token> in URL
   useEffect(() => {
@@ -160,6 +161,13 @@ export function App() {
     const onLogout = () => { clearToken(); authed.value = false; };
     window.addEventListener('auth:logout', onLogout);
     return () => window.removeEventListener('auth:logout', onLogout);
+  }, []);
+
+  // Check demo mode once on mount
+  useEffect(() => {
+    fetch('/api/demo/status').then((r) => r.json()).then((d: any) => {
+      if (d.demo) isDemo.value = true;
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -209,7 +217,16 @@ export function App() {
 
   return (
     <LocationProvider>
-      <div class="app-shell">
+      {isDemo.value && (
+        <div class="demo-banner">
+          <span class="material-symbols-rounded" style="font-size:16px">lock</span>
+          <span>Demo mode — changes are disabled.</span>
+          <a href="https://github.com/orilaxnet/catchwire-agent" target="_blank" rel="noopener">
+            Fork to self-host →
+          </a>
+        </div>
+      )}
+      <div class={`app-shell${isDemo.value ? ' demo-offset' : ''}`}>
         <NavRail currentPath={path.value} />
         <div class="main-content">
           {!isInbox && (

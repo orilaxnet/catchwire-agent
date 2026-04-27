@@ -31,6 +31,11 @@ const analytics = new AnalyticsEngine();
 // Auth endpoints — public
 router.use(authRouter);
 
+// Demo status — public (frontend reads before auth)
+router.get('/demo/status', (_req, res) => {
+  res.json({ demo: process.env.DEMO_MODE === 'true' });
+});
+
 // Everything below requires a valid JWT
 router.use(requireAuth);
 

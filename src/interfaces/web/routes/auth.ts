@@ -117,6 +117,18 @@ router.post('/auth/login', rateLimitMiddleware('auth_attempts'), async (req, res
 
     const token = signToken({ sub: user.id, telegramId: '' });
     logger.info('Login successful', { userId: user.id });
+
+    // Demo mode: reset data so each visitor sees a clean slate
+    if (process.env.DEMO_MODE === 'true' && user.id === (process.env.DEMO_USER_ID ?? '')) {
+      try {
+        const { resetDemoData } = await import('../demo-reset.ts');
+        await resetDemoData();
+        logger.info('Demo data reset on login');
+      } catch (resetErr) {
+        logger.warn('Demo data reset failed', { err: resetErr });
+      }
+    }
+
     res.json({ token, userId: user.id, expiresIn: 3_600 });
   } catch (err) {
     logger.error('Login failed', { err });

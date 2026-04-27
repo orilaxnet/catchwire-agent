@@ -8,6 +8,7 @@ import cors from 'cors';
 import { logger } from '../../utils/logger.ts';
 import { rateLimitMiddleware } from './middleware/rate-limit.middleware.ts';
 import { verifyToken } from './middleware/auth.middleware.ts';
+import { demoGuard } from './middleware/demo.middleware.ts';
 import type { IUserInterface, InterfaceConfig, InterfaceCapabilities, Message, MessageResult, UserAction } from '../shared/interface-manager.ts';
 
 export class WebInterface implements IUserInterface {
@@ -128,7 +129,7 @@ export class WebInterface implements IUserInterface {
     this.app.get('/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
     const { default: apiRouter } = await import('./routes/index.ts');
-    this.app.use('/api', rateLimitMiddleware('api_calls'), apiRouter);
+    this.app.use('/api', rateLimitMiddleware('api_calls'), demoGuard, apiRouter);
 
     // Gmail OAuth: generate a CSRF state token, store accountId against it
     this.app.get('/auth/gmail/start', rateLimitMiddleware('auth_attempts'), (req, res) => {
