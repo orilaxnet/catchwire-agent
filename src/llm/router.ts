@@ -5,6 +5,20 @@
 import type { LLMConfig, LLMProvider } from '../types/index.ts';
 import { logger } from '../utils/logger.ts';
 
+// Extract JSON from LLM response — handles plain JSON, markdown code blocks, and embedded JSON
+function extractJSON(raw: string): any {
+  const s = raw.trim();
+  // Try direct parse first
+  try { return JSON.parse(s); } catch {}
+  // Strip markdown code fences: ```json ... ``` or ``` ... ```
+  const fence = s.match(/```(?:json)?\s*([\s\S]+?)\s*```/);
+  if (fence) { try { return JSON.parse(fence[1].trim()); } catch {} }
+  // Extract first {...} block
+  const obj = s.match(/(\{[\s\S]+\})/);
+  if (obj) { try { return JSON.parse(obj[1]); } catch {} }
+  throw new Error(`No valid JSON found in LLM response: ${s.slice(0, 120)}`);
+}
+
 export interface LLMOptions {
   maxTokens?:   number;
   temperature?: number;
@@ -48,7 +62,7 @@ export class LLMRouter {
 
   async completeWithRetry<T>(
     prompt: string,
-    validate: (raw: string) => T,
+    validate: (raw: any) => T,
     maxRetries = 2,
     options?: LLMOptions
   ): Promise<T> {
@@ -59,12 +73,13 @@ export class LLMRouter {
       const raw = await this.complete(currentPrompt, options);
 
       try {
-        return validate(raw);
+        // Try to extract JSON from the raw string before validating
+        const parsed = extractJSON(raw);
+        return validate(parsed);
       } catch (err) {
         lastError = err as Error;
         logger.debug(`LLM output invalid (attempt ${attempt + 1})`, { error: (err as Error).message });
-
-        currentPrompt = prompt + `\n\n---\nPrevious output:\n${raw}\n\nError: ${lastError.message}\nPlease try again and return valid JSON only.`;
+        currentPrompt = prompt + `\n\n---\nPrevious output:\n${raw}\n\nError: ${lastError.message}\nPlease return valid JSON only, no extra text.`;
       }
     }
 
@@ -103,6 +118,8 @@ export class LLMRouter {
         return new OllamaProvider(config);
       case 'custom':
         return new CustomProvider(config);
+      case 'grok':
+        return new CustomProvider({ ...config, baseUrl: config.baseUrl || 'https://api.x.ai/v1' });
       default:
         throw new Error(`Unknown LLM provider: ${config.provider}`);
     }
@@ -316,12 +333,16 @@ class CustomProvider implements LLMProvider_I {
           ...(options?.system ? [{ role: 'system', content: options.system }] : []),
           { role: 'user', content: prompt }
         ],
-        max_tokens:  options?.maxTokens  ?? 2048,
-        temperature: options?.temperature ?? 0.3
+        max_tokens:       options?.maxTokens  ?? 2048,
+        temperature:      options?.temperature ?? 0.3,
+        response_format:  { type: 'json_object' },
       })
     });
 
-    if (!response.ok) throw new Error(`Custom LLM error: ${response.status}`);
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`Custom LLM error: ${response.status} ${body.slice(0, 200)}`);
+    }
 
     const data = await response.json() as any;
     return data.choices[0]?.message?.content ?? '';

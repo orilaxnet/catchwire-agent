@@ -26,6 +26,8 @@ export class MultiAccountManager extends EventEmitter {
     for (const acc of rows) {
       if (acc.account_type === 'imap' && acc.credentials_enc) {
         await this.startIMAPPoller(acc);
+      } else if (acc.account_type === 'mailtm' && acc.credentials_enc) {
+        await this.startMailTMPoller(acc);
       } else if (acc.account_type === 'gmail') {
         logger.info('Gmail uses webhooks — no polling needed', { accountId: acc.id });
       }
@@ -53,6 +55,26 @@ export class MultiAccountManager extends EventEmitter {
       logger.info('IMAP poller started', { accountId: account.id });
     } catch (err) {
       logger.error('Failed to start IMAP poller', { accountId: account.id, err });
+    }
+  }
+
+  private async startMailTMPoller(account: any): Promise<void> {
+    try {
+      const creds = JSON.parse(this.encryption.decrypt(account.credentials_enc));
+      if (!creds?.address || !creds?.password) {
+        logger.warn('MailTM account missing credentials', { accountId: account.id }); return;
+      }
+      const { MailTMPoller } = await import('./mailtm-poller.ts');
+      const poller = new MailTMPoller(
+        account.id,
+        { address: creds.address, password: creds.password },
+        (raw) => this.ingest(raw),
+        account.polling_interval_min ?? 1,
+      );
+      poller.start();
+      logger.info('MailTM poller started', { accountId: account.id });
+    } catch (err) {
+      logger.error('Failed to start MailTM poller', { accountId: account.id, err });
     }
   }
 

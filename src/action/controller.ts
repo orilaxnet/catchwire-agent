@@ -26,7 +26,7 @@ export class ActionController {
     try {
       logger.info('Processing email', { emailId, sender: email.originalSender, subject: email.subject });
 
-      const processedEmail = await this.deps.pluginManager.runTransformHook('beforeEmailProcess', email);
+      const processedEmail = await this.deps.pluginManager.runBeforeEmailProcess(email);
       const persona        = await this.getPersona(processedEmail.accountId);
       const intentPrompts  = await this.getIntentPrompts(processedEmail.accountId);
       const thread         = processedEmail.threadId ? await this.getThread(processedEmail.threadId) : undefined;
@@ -57,7 +57,7 @@ export class ActionController {
       });
       await AccountRepo.logEmail(processedEmail.accountId);
 
-      await this.deps.pluginManager.runHook('afterEmailProcess', processedEmail, analysisResult);
+      await this.deps.pluginManager.runAfterEmailProcess(processedEmail, analysisResult);
 
       webhookDispatcher.dispatch('email.received', {
         emailId, accountId: processedEmail.accountId, from: processedEmail.originalSender,
@@ -97,13 +97,26 @@ export class ActionController {
     }
   }
 
+  // Decode RFC 2047 MIME-encoded words like =?UTF-8?Q?hello?=
+  private decodeMimeSubject(subject: string): string {
+    return subject.replace(/=\?([^?]+)\?([BQ])\?([^?]*)\?=/gi, (_match, _charset, encoding, text) => {
+      try {
+        if (encoding.toUpperCase() === 'Q') {
+          return decodeURIComponent(text.replace(/_/g, ' ').replace(/=([0-9A-F]{2})/gi, '%$1'));
+        }
+        return Buffer.from(text, 'base64').toString('utf8');
+      } catch { return text; }
+    });
+  }
+
   private async notifyUser(userId: string, emailId: string, email: ParsedEmail, analysis: AgentResponse, mode: 'approval_required' | 'draft_ready' | 'summary_only'): Promise<void> {
     const priorityEmoji: Record<string, string> = { critical: '🚨', high: '⚠️', medium: '📌', low: 'ℹ️' };
+    const subject = this.decodeMimeSubject(email.subject);
 
     let text = [
       `📧 New Email`, ``,
       `👤 From: ${email.originalSenderName || email.originalSender}`,
-      `📌 Subject: ${email.subject}`,
+      `📌 Subject: ${subject}`,
       `🕐 Received: ${email.originalDate.toLocaleString()}`,
       ``, `━━━━━━━━━━━━━━━━━━━`, `📋 Summary:`, analysis.summary, ``,
       `🎯 Intent: ${analysis.intent} | ${priorityEmoji[analysis.priority]} Priority: ${analysis.priority}`,
@@ -133,7 +146,7 @@ export class ActionController {
     );
 
     await this.deps.interfaceManager.sendToUser(userId, {
-      text, format: 'markdown', buttons,
+      text, format: 'plain', buttons,
       priority: analysis.priority === 'critical' ? 'urgent' : 'normal',
     });
   }
@@ -193,7 +206,15 @@ export class ActionController {
   }
 
   private async getUserId(accountId: string): Promise<string> {
-    const { rows } = await getPool().query('SELECT user_id FROM email_accounts WHERE id = $1', [accountId]);
-    return rows[0]?.user_id ?? '';
+    // Return telegram_id so the Telegram interface can use it as chat_id directly.
+    // Falls back to the db user_id if no telegram_id is set.
+    const { rows } = await getPool().query(
+      `SELECT u.telegram_id, u.id
+       FROM email_accounts ea JOIN users u ON u.id = ea.user_id
+       WHERE ea.id = $1 LIMIT 1`,
+      [accountId]
+    );
+    const row = rows[0];
+    return row?.telegram_id ?? row?.id ?? '';
   }
 }

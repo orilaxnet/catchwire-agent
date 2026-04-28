@@ -5,15 +5,17 @@ import { selectedAccount, accounts } from '../signals/store.ts';
 import { api } from '../api/client.ts';
 
 const LLM_PROVIDERS = [
-  { id: 'openrouter', label: 'OpenRouter', placeholder: 'sk-or-v1-...' },
-  { id: 'openai',     label: 'OpenAI',     placeholder: 'sk-...' },
-  { id: 'gemini',     label: 'Gemini',     placeholder: 'AIza...' },
-  { id: 'claude',     label: 'Claude',     placeholder: 'sk-ant-...' },
-  { id: 'ollama',     label: 'Ollama',     placeholder: 'http://localhost:11434' },
-  { id: 'custom',     label: 'Custom',     placeholder: 'API Key' },
+  { id: 'grok',       label: 'Grok (xAI)',  placeholder: 'xai-...' },
+  { id: 'openrouter', label: 'OpenRouter',  placeholder: 'sk-or-v1-...' },
+  { id: 'openai',     label: 'OpenAI',      placeholder: 'sk-...' },
+  { id: 'gemini',     label: 'Gemini',      placeholder: 'AIza...' },
+  { id: 'claude',     label: 'Claude',      placeholder: 'sk-ant-...' },
+  { id: 'ollama',     label: 'Ollama',      placeholder: 'http://localhost:11434' },
+  { id: 'custom',     label: 'Custom',      placeholder: 'API Key' },
 ] as const;
 
 const LLM_MODELS: Record<string, string[]> = {
+  grok:       ['grok-4-1-fast-non-reasoning', 'grok-4-1-fast-reasoning', 'grok-4.20-0309-non-reasoning', 'grok-4.20-0309-reasoning', 'grok-4.20-multi-agent-0309'],
   openrouter: ['google/gemini-flash-1.5', 'google/gemini-2.0-flash-exp', 'anthropic/claude-3.5-sonnet', 'openai/gpt-4o', 'meta-llama/llama-3.3-70b-instruct'],
   openai:     ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1', 'o3-mini'],
   gemini:     ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],

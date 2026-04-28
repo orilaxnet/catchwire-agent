@@ -20,6 +20,7 @@ const _llmRouter = new LLMRouter({
   provider: (process.env.LLM_PROVIDER ?? 'openrouter') as any,
   apiKey:   process.env.LLM_API_KEY ?? '',
   model:    process.env.LLM_MODEL   ?? 'google/gemini-flash-1.5',
+  baseUrl:  process.env.LLM_BASE_URL,
 });
 const _pluginManager = new PluginManager();
 const _pluginService = new PluginBuilderService(_llmRouter, _pluginManager);

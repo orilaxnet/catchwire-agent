@@ -196,7 +196,7 @@ export interface Persona {
 // LLM Config
 // ─────────────────────────────────────────────────────────────
 
-export type LLMProvider = 'openai' | 'gemini' | 'claude' | 'openrouter' | 'ollama' | 'custom';
+export type LLMProvider = 'openai' | 'gemini' | 'claude' | 'openrouter' | 'ollama' | 'custom' | 'grok';
 
 export interface LLMConfig {
   provider: LLMProvider;
