@@ -12,17 +12,14 @@ export class StartHandler {
     }
 
     await ctx.reply(
-      `Hi ${name}! 👋\n\nWelcome to Email Agent.\n\nTo get started, connect an email account:`,
-      {
-        parse_mode:   'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '➕ Add Email Account', callback_data: JSON.stringify({ action: 'start_add_account' }) }],
-            [{ text: '⚙️ Settings',          callback_data: JSON.stringify({ action: 'settings'          }) }],
-            [{ text: '❓ Help',               callback_data: JSON.stringify({ action: 'help'              }) }],
-          ],
-        },
-      },
+      `👋 Hi ${name}! Welcome to *Catchwire Agent*.\n\n` +
+      `I process your emails and draft smart replies using AI.\n\n` +
+      `*Quick start:*\n` +
+      `/webapp — open the web inbox instantly (no password)\n` +
+      `/addaccount — connect your first email account\n` +
+      `/settings — configure AI, tone & autonomy\n\n` +
+      `Type / to see all commands.`,
+      { parse_mode: 'Markdown' },
     );
   }
 

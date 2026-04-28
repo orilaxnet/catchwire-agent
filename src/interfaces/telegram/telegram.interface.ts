@@ -55,6 +55,18 @@ export class TelegramInterface implements IUserInterface {
     this.bot.on('callback_query', (ctx) => callbackHandler.handle(ctx));
     this.bot.on('text',           (ctx) => this.handleText(ctx));
 
+    // Register slash-command menu with Telegram (shows when user types /)
+    await this.bot.telegram.setMyCommands([
+      { command: 'webapp',      description: 'Open web inbox (magic link, no password)' },
+      { command: 'addaccount',  description: 'Connect an email account' },
+      { command: 'settings',    description: 'View & change settings' },
+      { command: 'setllm',      description: 'Choose AI provider & model' },
+      { command: 'setstyle',    description: 'Set your writing style' },
+      { command: 'analytics',   description: '7-day email stats' },
+      { command: 'deleteall',   description: 'Delete all your data' },
+      { command: 'help',        description: 'Show all commands' },
+    ]);
+
     // Launch without await — bot.launch() in Telegraf v4 runs indefinitely
     this.bot.launch().catch((err) => logger.error('Telegram bot crashed', err));
     logger.info('Telegram bot launched');
