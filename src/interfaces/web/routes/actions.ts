@@ -169,10 +169,61 @@ router.patch('/accounts/:id/persona', async (req, res) => {
   }
 });
 
+// ── IMAP connection tester ────────────────────────────────────────────────────
+
+function imapErrorMessage(raw: string): string {
+  if (/Invalid credentials|AUTHENTICATIONFAILED|authentication failed/i.test(raw))
+    return 'Authentication failed. For Gmail, create an App Password (Google Account → Security → 2-Step Verification → App passwords) — regular passwords are blocked.';
+  if (/ECONNREFUSED|Connection refused/i.test(raw))
+    return 'Connection refused. Make sure IMAP is enabled in your email settings (Gmail: Settings → See all settings → Forwarding and POP/IMAP).';
+  if (/ENOTFOUND|getaddrinfo/i.test(raw))
+    return 'Host not found. Double-check the IMAP server address.';
+  if (/ETIMEDOUT|timed out/i.test(raw))
+    return 'Connection timed out. Check the host and port — for Gmail use imap.gmail.com:993.';
+  if (/CERT|certificate|TLS|SSL/i.test(raw))
+    return 'SSL/TLS error. Try port 993 with TLS or port 143 without.';
+  return `Connection failed: ${raw}`;
+}
+
+async function testImap(cfg: { host: string; port: number; user: string; pass: string }): Promise<void> {
+  const { default: Imap } = await import('imap');
+  return new Promise<void>((resolve, reject) => {
+    const imap = new (Imap as any)({
+      user: cfg.user, password: cfg.pass,
+      host: cfg.host, port: cfg.port,
+      tls: cfg.port === 993,
+      tlsOptions: { rejectUnauthorized: false },
+      authTimeout: 10_000,
+      connTimeout: 10_000,
+    });
+    imap.once('ready', () => { imap.end(); resolve(); });
+    imap.once('error', (err: Error) => reject(err));
+    imap.connect();
+  });
+}
+
+// POST /accounts/test-connection — test IMAP before saving
+router.post('/accounts/test-connection', async (req, res) => {
+  const { host, port, user, pass } = req.body as {
+    host?: string; port?: number; user?: string; pass?: string;
+  };
+  if (!host || !port || !user || !pass) {
+    res.status(400).json({ ok: false, error: 'host, port, user, pass are required' }); return;
+  }
+  try {
+    await testImap({ host, port: Number(port), user, pass });
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.json({ ok: false, error: imapErrorMessage(err.message ?? String(err)) });
+  }
+});
+
+// POST /accounts — create and optionally verify first
 router.post('/accounts', async (req, res) => {
   try {
-    const { email_address, display_name, account_type = 'imap' } = req.body as {
+    const { email_address, display_name, account_type = 'imap', credentials } = req.body as {
       email_address?: string; display_name?: string; account_type?: string;
+      credentials?: { imap_host?: string; imap_port?: number; imap_user?: string; imap_pass?: string };
     };
     if (!email_address) { res.status(400).json({ error: 'email_address required' }); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email_address)) {
@@ -183,6 +234,21 @@ router.post('/accounts', async (req, res) => {
       res.status(400).json({ error: `account_type must be one of: ${VALID_TYPES.join(', ')}` }); return;
     }
 
+    // Test IMAP connection before saving
+    if (account_type === 'imap' && credentials?.imap_pass) {
+      const cfg = {
+        host: credentials.imap_host ?? 'imap.gmail.com',
+        port: credentials.imap_port ?? 993,
+        user: credentials.imap_user ?? email_address,
+        pass: credentials.imap_pass,
+      };
+      try {
+        await testImap(cfg);
+      } catch (err: any) {
+        res.status(422).json({ error: imapErrorMessage(err.message ?? String(err)) }); return;
+      }
+    }
+
     const pool = getPool();
     const { rows: existing } = await pool.query(
       'SELECT id FROM email_accounts WHERE email_address = $1', [email_address]
@@ -190,7 +256,7 @@ router.post('/accounts', async (req, res) => {
     if (existing.length) { res.status(409).json({ error: 'Account already exists' }); return; }
 
     const { rows: users } = await pool.query('SELECT id FROM users LIMIT 1');
-    if (!users.length) { res.status(400).json({ error: 'No user registered — create an account first' }); return; }
+    if (!users.length) { res.status(400).json({ error: 'No user registered' }); return; }
 
     const id = randomUUID();
     await pool.query(
@@ -198,7 +264,23 @@ router.post('/accounts', async (req, res) => {
        VALUES ($1,$2,$3,$4,$5)`,
       [id, users[0].id, email_address, display_name ?? email_address, account_type]
     );
-    logger.info('Account created', { id, email_address });
+
+    // Encrypt and persist IMAP credentials
+    if (account_type === 'imap' && credentials?.imap_pass) {
+      const { Encryption }        = await import('../../../security/encryption.ts');
+      const { CredentialManager } = await import('../../../security/credential-manager.ts');
+      const enc  = new Encryption(process.env.ENCRYPTION_KEY!);
+      const cred = new CredentialManager(enc);
+      await cred.storeEmailCredentials(id, {
+        host:   credentials.imap_host ?? 'imap.gmail.com',
+        port:   credentials.imap_port ?? 993,
+        secure: (credentials.imap_port ?? 993) === 993,
+        user:   credentials.imap_user ?? email_address,
+        pass:   credentials.imap_pass,
+      });
+    }
+
+    logger.info('Account created', { id, email_address, account_type });
     res.status(201).json({ account_id: id, email_address, account_type });
   } catch (err) {
     logger.error('POST /accounts error', { err });

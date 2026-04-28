@@ -10,6 +10,7 @@ const ALWAYS_ALLOWED = [
   '/playground/',
   '/integrations',
   '/demo/',
+  '/accounts/test-connection',
 ];
 
 export function demoGuard(req: Request, res: Response, next: NextFunction): void {

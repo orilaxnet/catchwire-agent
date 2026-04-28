@@ -48,16 +48,18 @@ export function Settings() {
   const apiBaseUrl      = useSignal('');
   const copiedField     = useSignal('');
 
-  const showAddAcc = useSignal(false);
-  const newEmail   = useSignal('');
-  const newDisplay = useSignal('');
-  const newType    = useSignal('imap');
-  const imapHost   = useSignal('');
-  const imapPort   = useSignal('993');
-  const imapUser   = useSignal('');
-  const imapPass   = useSignal('');
-  const addingAcc  = useSignal(false);
-  const addAccErr  = useSignal('');
+  const showAddAcc  = useSignal(false);
+  const newEmail    = useSignal('');
+  const newDisplay  = useSignal('');
+  const newType     = useSignal('imap');
+  const imapHost    = useSignal('imap.gmail.com');
+  const imapPort    = useSignal('993');
+  const imapUser    = useSignal('');
+  const imapPass    = useSignal('');
+  const addingAcc   = useSignal(false);
+  const addAccErr   = useSignal('');
+  const testingConn = useSignal(false);
+  const testResult  = useSignal<{ ok: boolean; msg: string } | null>(null);
 
   useEffect(() => {
     api.integrations.info().then((info) => {
@@ -105,13 +107,36 @@ export function Settings() {
     }).catch((e) => { savedMsg.value = `error:${e.message}`; });
   };
 
+  const testConnection = async () => {
+    testResult.value  = null;
+    testingConn.value = true;
+    try {
+      const r = await fetch('/api/accounts/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('ea_token')}` },
+        body: JSON.stringify({
+          host: imapHost.value || 'imap.gmail.com',
+          port: parseInt(imapPort.value) || 993,
+          user: imapUser.value || newEmail.value,
+          pass: imapPass.value,
+        }),
+      });
+      const d = await r.json() as { ok: boolean; error?: string };
+      testResult.value = { ok: d.ok, msg: d.ok ? 'Connection successful! You can now save.' : (d.error ?? 'Connection failed') };
+    } catch {
+      testResult.value = { ok: false, msg: 'Network error — server unreachable' };
+    } finally { testingConn.value = false; }
+  };
+
   const addAccount = async () => {
     if (!newEmail.value.trim()) { addAccErr.value = 'Email is required'; return; }
     addingAcc.value = true; addAccErr.value = '';
     try {
       const creds = newType.value === 'imap' ? {
-        imap_host: imapHost.value, imap_port: parseInt(imapPort.value),
-        imap_user: imapUser.value || newEmail.value, imap_pass: imapPass.value,
+        imap_host: imapHost.value || 'imap.gmail.com',
+        imap_port: parseInt(imapPort.value) || 993,
+        imap_user: imapUser.value || newEmail.value,
+        imap_pass: imapPass.value,
       } : undefined;
       await api.accounts.create({
         email_address: newEmail.value.trim(),
@@ -122,6 +147,7 @@ export function Settings() {
       accounts.value = updated;
       showAddAcc.value = false;
       newEmail.value = newDisplay.value = imapHost.value = imapUser.value = imapPass.value = '';
+      testResult.value = null;
     } catch (e: any) { addAccErr.value = e.message; }
     finally { addingAcc.value = false; }
   };
@@ -224,19 +250,36 @@ export function Settings() {
                     <div>
                       <div class="field-label">Password / App Password</div>
                       <input class="md-input" type="password" value={imapPass.value}
-                        onInput={(e: any) => { imapPass.value = e.target.value; }}
-                        placeholder="••••••••" />
+                        onInput={(e: any) => { imapPass.value = e.target.value; testResult.value = null; }}
+                        placeholder="Gmail: use App Password, not your account password" />
                     </div>
+                    {/* Test connection */}
+                    <div>
+                      <button class="btn btn-ghost" style="font-size:13px"
+                        onClick={testConnection} disabled={testingConn.value || !imapPass.value}>
+                        <span class="material-symbols-rounded" style="font-size:16px;vertical-align:middle">wifi_tethering</span>
+                        {testingConn.value ? ' Testing…' : ' Test Connection'}
+                      </button>
+                    </div>
+                    {testResult.value && (
+                      <div style={`font-size:12px;padding:8px 12px;border-radius:8px;line-height:1.5;
+                        background:${testResult.value.ok ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.1)'};
+                        color:${testResult.value.ok ? '#4ade80' : '#f87171'}`}>
+                        {testResult.value.ok ? '✓ ' : '✗ '}{testResult.value.msg}
+                      </div>
+                    )}
                   </>
                 )}
                 {addAccErr.value && (
-                  <div style="font-size:12px;color:var(--c-critical)">{addAccErr.value}</div>
+                  <div style="font-size:12px;color:var(--c-critical);padding:8px 12px;background:rgba(239,68,68,.1);border-radius:8px;line-height:1.5">
+                    {addAccErr.value}
+                  </div>
                 )}
                 <div style="display:flex;gap:8px;margin-top:4px">
                   <button class="btn btn-primary" onClick={addAccount} disabled={addingAcc.value}>
                     {addingAcc.value ? 'Connecting…' : 'Connect Account'}
                   </button>
-                  <button class="btn btn-ghost" onClick={() => { showAddAcc.value = false; }}>Cancel</button>
+                  <button class="btn btn-ghost" onClick={() => { showAddAcc.value = false; testResult.value = null; }}>Cancel</button>
                 </div>
               </div>
             </div>
