@@ -41,6 +41,7 @@ router.post('/playground/run', async (req, res) => {
       provider: (process.env.LLM_PROVIDER as any) ?? 'openrouter',
       model:    process.env.LLM_MODEL ?? 'google/gemini-flash-1.5',
       apiKey:   process.env.LLM_API_KEY,
+      baseUrl:  process.env.LLM_BASE_URL ?? undefined,
     };
 
     const expandedPrompt = prompt

@@ -32,9 +32,9 @@ export class EmailScheduler {
   async scheduleEmail(data: Omit<ScheduledEmail, 'id' | 'status' | 'createdAt'>): Promise<string> {
     const id = randomUUID();
     await getPool().query(
-      `INSERT INTO scheduled_emails (id, account_id, send_at, status)
-       VALUES ($1, $2, $3, 'scheduled')`,
-      [id, data.accountId, data.sendAt]
+      `INSERT INTO scheduled_emails (id, account_id, to_address, subject, body, send_at, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'scheduled')`,
+      [id, data.accountId, data.to, data.subject, data.body, data.sendAt]
     );
     logger.info('Email scheduled', { id, sendAt: data.sendAt });
     return id;

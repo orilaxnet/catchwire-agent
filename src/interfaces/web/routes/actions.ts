@@ -6,7 +6,7 @@ import { logger } from '../../../utils/logger.ts';
 
 const router = Router();
 
-const ALLOWED_LLM_PROVIDERS = ['openrouter', 'openai', 'gemini', 'claude', 'ollama', 'custom'] as const;
+const ALLOWED_LLM_PROVIDERS = ['openrouter', 'openai', 'gemini', 'claude', 'ollama', 'custom', 'grok'] as const;
 
 async function resolveAccountId(emailId: string, hint?: string): Promise<string> {
   if (hint) return hint;

@@ -220,6 +220,7 @@ router.post('/emails/:id/regenerate', async (req, res) => {
         provider: p?.llm_provider ?? process.env.LLM_PROVIDER ?? 'openrouter',
         model:    p?.llm_model    ?? process.env.LLM_MODEL    ?? 'google/gemini-flash-1.5',
         apiKey:   process.env.LLM_API_KEY,
+        baseUrl:  p?.llm_base_url ?? process.env.LLM_BASE_URL ?? undefined,
       },
     };
 

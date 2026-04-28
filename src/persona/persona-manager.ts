@@ -94,6 +94,7 @@ export class PersonaManager {
         provider: (process.env.LLM_PROVIDER as any) ?? 'openrouter',
         model:    process.env.LLM_MODEL ?? 'google/gemini-flash-1.5',
         apiKey:   process.env.LLM_API_KEY,
+        baseUrl:  process.env.LLM_BASE_URL ?? undefined,
       },
       onboardingDone: false,
       shadowMode:     true,

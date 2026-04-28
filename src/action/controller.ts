@@ -46,7 +46,7 @@ export class ActionController {
         sender:       processedEmail.originalSender,
         senderName:   processedEmail.originalSenderName,
         subject:      processedEmail.subject,
-        body:         processedEmail.body,
+        body:         processedEmail.bodyText,
         summary:      analysisResult.summary,
         priority:     analysisResult.priority,
         intent:       analysisResult.intent,
@@ -177,13 +177,13 @@ export class ActionController {
     const row = rows[0];
     if (!row) return {
       tone: 'professional', useEmoji: false, language: 'auto', autonomyLevel: 'draft',
-      llmConfig: { provider: process.env.LLM_PROVIDER || 'openrouter', apiKey: process.env.LLM_API_KEY, model: process.env.LLM_MODEL || 'google/gemini-flash-1.5' },
+      llmConfig: { provider: process.env.LLM_PROVIDER || 'openrouter', apiKey: process.env.LLM_API_KEY, model: process.env.LLM_MODEL || 'google/gemini-flash-1.5', baseUrl: process.env.LLM_BASE_URL ?? undefined },
     };
     return {
       tone: row.tone, useEmoji: row.use_emoji, language: row.language, autonomyLevel: row.autonomy_level,
       shadowMode: row.shadow_mode, onboardingDone: row.onboarding_done,
       systemPrompt: row.system_prompt ?? undefined,
-      llmConfig: { provider: row.llm_provider ?? process.env.LLM_PROVIDER, model: row.llm_model ?? process.env.LLM_MODEL, apiKey: process.env.LLM_API_KEY },
+      llmConfig: { provider: row.llm_provider ?? process.env.LLM_PROVIDER, model: row.llm_model ?? process.env.LLM_MODEL, apiKey: process.env.LLM_API_KEY, baseUrl: row.llm_base_url ?? process.env.LLM_BASE_URL ?? undefined },
     };
   }
 
