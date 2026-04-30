@@ -91,7 +91,7 @@ function ReplyCard({ reply, onSend, onEdit, isSending }: {
 
 // ── Detail Panel ───────────────────────────────────────────────────────────
 
-function DetailPane({ email, onDone }: { email: EmailItem | null; onDone: () => void }) {
+function DetailPane({ email, onDone, onBack }: { email: EmailItem | null; onDone: () => void; onBack?: () => void }) {
   const editIdx     = useSignal<number | null>(null);
   const editBody    = useSignal('');
   const sending     = useSignal(false);
@@ -122,6 +122,13 @@ function DetailPane({ email, onDone }: { email: EmailItem | null; onDone: () => 
       </div>
     );
   }
+
+  // Mobile back button rendered inside the pane header
+  const backBtn = onBack ? (
+    <button class="btn btn-ghost" style="margin-right:8px;height:32px;width:32px;padding:0" onClick={onBack}>
+      <span class="material-symbols-rounded" style="font-size:18px">arrow_back</span>
+    </button>
+  ) : null;
 
   const analysis  = email.agent_response as any;
   const replies: Array<{ label: string; body: string }> = analysis?.suggestedReplies ?? [];
@@ -176,6 +183,7 @@ function DetailPane({ email, onDone }: { email: EmailItem | null; onDone: () => 
 
         {/* Header */}
         <div class="detail-header">
+          {backBtn}
           <div class="sender-avatar" style={{ background: color }}>{ini}</div>
           <div class="detail-header-info">
             <div class="detail-from">{email.sender_name || email.from_address}</div>
@@ -367,10 +375,11 @@ function FullBody({ emailId }: { emailId: string }) {
 const FILTERS: Filter[] = ['all', 'pending', 'critical', 'high', 'done'];
 
 export function Inbox() {
-  const selectedId = useSignal<string | null>(null);
-  const page       = useSignal(1);
-  const hasMore    = useSignal(false);
-  const filter     = useSignal<Filter>('pending');
+  const selectedId  = useSignal<string | null>(null);
+  const page        = useSignal(1);
+  const hasMore     = useSignal(false);
+  const filter      = useSignal<Filter>('pending');
+  const showDetail  = useSignal(false); // mobile: whether detail pane is visible
 
   const loadEmails = (p: number) => {
     if (!selectedAccount.value) return;
@@ -470,7 +479,7 @@ export function Inbox() {
                   key={e.id}
                   email={e}
                   selected={selectedId.value === e.id}
-                  onClick={() => { selectedId.value = e.id; }}
+                  onClick={() => { selectedId.value = e.id; showDetail.value = true; }}
                 />
               ))}
               {hasMore.value && (
@@ -487,13 +496,16 @@ export function Inbox() {
       </div>
 
       {/* ── Right: detail pane ── */}
-      <DetailPane
-        email={selectedEmail}
-        onDone={() => {
-          // refresh to show updated user_action
-          loadEmails(1);
-        }}
-      />
+      <div class={`detail-pane-wrapper${showDetail.value ? ' visible' : ''}`}>
+        <DetailPane
+          email={selectedEmail}
+          onBack={() => { showDetail.value = false; }}
+          onDone={() => {
+            showDetail.value = false;
+            loadEmails(1);
+          }}
+        />
+      </div>
     </div>
   );
 }

@@ -113,7 +113,9 @@ html, body, #app {
 
 .email-list-pane {
   width: var(--list-w);
-  flex-shrink: 0;
+  min-width: 240px;
+  max-width: 360px;
+  flex-shrink: 1;
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -228,6 +230,15 @@ html, body, #app {
 .email-row-badge.done     { background: var(--surface-3);      color: var(--text-muted); }
 
 /* ── Detail Pane ─────────────────────────────────────────────────────────── */
+
+/* wrapper manages mobile show/hide; detail-pane itself is always rendered */
+.detail-pane-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
 
 .detail-pane {
   flex: 1;
@@ -619,9 +630,15 @@ input.md-input, select.md-input, textarea.md-input {
 /* ── Mobile ──────────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
-  .email-list-pane { width: 100%; }
-  .detail-pane { display: none; }
-  .detail-pane.visible { display: flex; position: fixed; inset: 0; z-index: 50; }
+  .email-list-pane { width: 100%; min-width: unset; max-width: unset; flex-shrink: 0; }
+  /* Detail pane wrapper slides over the list on mobile */
+  .detail-pane-wrapper {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+  }
+  .detail-pane-wrapper.visible { display: flex; }
   :root { --nav-w: 0px; }
   .nav-rail { display: none; }
 }
@@ -905,12 +922,18 @@ input.md-input, select.md-input, textarea.md-input {
 .chat-fab.hidden { opacity: 0; pointer-events: none; }
 .chat-fab .material-symbols-rounded { font-size: 22px; }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .agent-chat.open {
     position: fixed;
     right: 0; top: 0; bottom: 0;
-    width: 100vw;
+    width: 340px;
     min-width: unset;
     z-index: 200;
+    box-shadow: -4px 0 24px rgba(0,0,0,.12);
+  }
+}
+@media (max-width: 480px) {
+  .agent-chat.open {
+    width: 100vw;
   }
 }
