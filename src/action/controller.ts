@@ -81,6 +81,7 @@ export class ActionController {
 
   private async decide(emailId: string, email: ParsedEmail, analysis: AgentResponse, autonomy: AutonomyLevel): Promise<void> {
     const userId = await this.getUserId(email.accountId);
+    if (!userId) return;  // no Telegram user linked to this account
     if (analysis.priority === 'critical') return this.notifyUser(userId, emailId, email, analysis, 'approval_required');
 
     switch (autonomy) {
@@ -215,6 +216,6 @@ export class ActionController {
       [accountId]
     );
     const row = rows[0];
-    return row?.telegram_id ?? row?.id ?? '';
+    return row?.telegram_id ?? '';
   }
 }
