@@ -45,6 +45,9 @@ export const AgentResponseSchema = z.object({
     location:     z.string().optional()
   }).default({}),
 
+  labels:         z.array(z.string()).optional().default([]),
+  unsubscribeUrl: z.string().optional(),
+
   confidence: z.number().min(0).max(1)
 });
 

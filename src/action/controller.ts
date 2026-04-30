@@ -2,6 +2,10 @@ import { randomUUID } from 'crypto';
 import type { ParsedEmail, AgentResponse, AutonomyLevel } from '../types/index.ts';
 import { AgentResponseSchema } from '../llm/schemas.ts';
 import { PromptEngine } from '../llm/prompt-engine.ts';
+import { MemoryManager } from '../memory/memory-manager.ts';
+import { LabelManager }  from '../labels/label-manager.ts';
+import { Researcher }    from '../services/researcher.ts';
+import { extractUnsubscribeUrl } from '../services/unsubscriber.ts';
 import { getPool }  from '../storage/pg-pool.ts';
 import { EmailLogRepo, AccountRepo, FeedbackRepo } from '../storage/sqlite.adapter.ts';
 import { webhookDispatcher } from '../services/webhook-dispatcher.ts';
@@ -15,7 +19,8 @@ interface ControllerDeps {
 }
 
 export class ActionController {
-  private promptEngine = new PromptEngine();
+  private promptEngine  = new PromptEngine();
+  private labelManager  = new LabelManager();
 
   constructor(private deps: ControllerDeps) {}
 
@@ -30,12 +35,39 @@ export class ActionController {
       const persona        = await this.getPersona(processedEmail.accountId);
       const intentPrompts  = await this.getIntentPrompts(processedEmail.accountId);
       const thread         = processedEmail.threadId ? await this.getThread(processedEmail.threadId) : undefined;
-      const prompt         = this.promptEngine.buildAnalysisPrompt({ email: processedEmail, persona, thread }, intentPrompts);
+
+      // Enrich prompt with memory, research, and custom labels
+      const memoryMgr  = new MemoryManager(persona.llmConfig);
+      const memories   = await memoryMgr.retrieve(processedEmail.accountId, {
+        sender: processedEmail.originalSender, subject: processedEmail.subject,
+      });
+      const memoryContext = memoryMgr.formatForPrompt(memories);
+
+      const labels          = await this.labelManager.list(processedEmail.accountId);
+      const labelInstruction = this.labelManager.buildPromptInstruction(labels);
+
+      const researcher = new Researcher(persona.llmConfig);
+      const research   = await researcher.research({
+        sender: processedEmail.originalSender, senderName: processedEmail.originalSenderName,
+        subject: processedEmail.subject, body: processedEmail.bodyText, intent: 'unknown',
+      });
+      const researchContext = researcher.formatForPrompt(research);
+
+      const prompt = this.promptEngine.buildAnalysisPrompt(
+        { email: processedEmail, persona, thread, memoryContext, researchContext, labelInstruction },
+        intentPrompts,
+      );
 
       const analysisResult = await this.deps.llmRouter.completeWithRetry(
         prompt,
         (raw: any) => AgentResponseSchema.parse(raw),
       );
+
+      // Auto-detect unsubscribe URL if not found by LLM
+      const unsubUrl = analysisResult.unsubscribeUrl
+        || (['newsletter', 'marketing'].includes(analysisResult.intent)
+          ? extractUnsubscribeUrl(processedEmail.bodyText) ?? undefined
+          : undefined);
 
       const processingMs = Date.now() - startTime;
 
@@ -51,11 +83,26 @@ export class ActionController {
         priority:     analysisResult.priority,
         intent:       analysisResult.intent,
         receivedAt:   processedEmail.originalDate,
-        agentResponse: JSON.stringify(analysisResult),
+        agentResponse: JSON.stringify({ ...analysisResult, unsubscribeUrl: unsubUrl }),
         processingMs,
         llmProvider:  persona.llmConfig?.provider,
       });
+
+      // Store unsubscribe URL and labels
+      if (unsubUrl) {
+        await getPool().query(`UPDATE email_log SET unsubscribe_url = $1 WHERE id = $2`, [unsubUrl, emailId]);
+      }
+      if (analysisResult.labels?.length) {
+        await this.labelManager.assignToEmail(emailId, analysisResult.labels, processedEmail.accountId);
+      }
+
       await AccountRepo.logEmail(processedEmail.accountId);
+
+      // Extract and store memories in background (non-blocking)
+      memoryMgr.extractAndStore(processedEmail.accountId, emailId, {
+        sender: processedEmail.originalSender, subject: processedEmail.subject,
+        body: processedEmail.bodyText.substring(0, 500), intent: analysisResult.intent,
+      }, analysisResult).catch(() => {});
 
       await this.deps.pluginManager.runAfterEmailProcess(processedEmail, analysisResult);
 
@@ -114,13 +161,18 @@ export class ActionController {
     const priorityEmoji: Record<string, string> = { critical: '🚨', high: '⚠️', medium: '📌', low: 'ℹ️' };
     const subject = this.decodeMimeSubject(email.subject);
 
+    // Show labels if any
+    const labelStr = (analysis as any).labels?.length
+      ? `\n🏷️ Labels: ${(analysis as any).labels.join(', ')}`
+      : '';
+
     let text = [
       `📧 New Email`, ``,
       `👤 From: ${email.originalSenderName || email.originalSender}`,
       `📌 Subject: ${subject}`,
       `🕐 Received: ${email.originalDate.toLocaleString()}`,
       ``, `━━━━━━━━━━━━━━━━━━━`, `📋 Summary:`, analysis.summary, ``,
-      `🎯 Intent: ${analysis.intent} | ${priorityEmoji[analysis.priority]} Priority: ${analysis.priority}`,
+      `🎯 Intent: ${analysis.intent} | ${priorityEmoji[analysis.priority]} Priority: ${analysis.priority}` + labelStr,
       `━━━━━━━━━━━━━━━━━━━`,
     ].join('\n');
 
@@ -133,12 +185,26 @@ export class ActionController {
       text += `\n🤖 AI confidence: ${(analysis.confidence * 100).toFixed(0)}%`;
     }
 
+    // Look up unsubscribe URL from DB (set during processing)
+    const { rows: logRows } = await getPool().query(
+      `SELECT unsubscribe_url FROM email_log WHERE id = $1`, [emailId]
+    );
+    const unsubUrl = logRows[0]?.unsubscribe_url;
+
     const buttons: any[] = mode !== 'summary_only'
       ? analysis.suggestedReplies.map((reply, i) => ({
           id: `send_reply_${i}`, label: `✅ Send ${i + 1}: ${reply.label}`, style: 'primary' as const,
           action: { type: 'callback' as const, data: { action: 'send_reply', emailId, replyIndex: i } },
         }))
       : [];
+
+    // Add unsubscribe button for newsletters/marketing
+    if (unsubUrl) {
+      buttons.push({
+        id: 'unsubscribe', label: '🚫 Unsubscribe', style: 'danger' as const,
+        action: { type: 'callback' as const, data: { action: 'unsubscribe', emailId } },
+      });
+    }
 
     buttons.push(
       { id: 'edit_reply', label: '✏️ Edit',      style: 'secondary' as const, action: { type: 'callback' as const, data: { action: 'edit',      emailId } } },

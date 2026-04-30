@@ -1,10 +1,13 @@
 import type { ParsedEmail, Persona, EmailThread } from '../types/index.ts';
 
 interface PromptContext {
-  email:          ParsedEmail;
-  persona:        Persona;
-  thread?:        EmailThread;
-  senderHistory?: string;
+  email:           ParsedEmail;
+  persona:         Persona;
+  thread?:         EmailThread;
+  senderHistory?:  string;
+  memoryContext?:  string;   // formatted memories from MemoryManager
+  researchContext?: string;  // formatted research from Researcher
+  labelInstruction?: string; // label classification instruction
 }
 
 export interface IntentPrompts {
@@ -17,8 +20,11 @@ export class PromptEngine {
     return [
       this.systemSection(ctx.persona, intentPrompts),
       this.personaSection(ctx.persona),
+      ctx.memoryContext   || '',
+      ctx.researchContext || '',
       this.threadSection(ctx.thread),
       this.emailSection(ctx.email),
+      ctx.labelInstruction || '',
       this.outputSection(),
     ].filter(Boolean).join('\n\n');
   }
@@ -144,6 +150,8 @@ Respond with exactly this JSON (no text outside):
     "deadlines": [], "amounts": [], "actionItems": [],
     "orderIds": [], "meetingTimes": [], "people": []
   },
+  "labels": [],
+  "unsubscribeUrl": "full URL if this is a newsletter/marketing email with an unsubscribe link, else omit",
   "confidence": 0.0
 }`;
   }

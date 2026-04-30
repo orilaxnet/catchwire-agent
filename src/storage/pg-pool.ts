@@ -260,6 +260,38 @@ export async function initPgSchema(): Promise<void> {
     '008_webhook_account_scope': `
       ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS account_id TEXT REFERENCES email_accounts(id) ON DELETE CASCADE;
       CREATE INDEX IF NOT EXISTS idx_webhooks_account ON webhooks (account_id) WHERE account_id IS NOT NULL;`,
+
+    '009_memories': `
+      CREATE TABLE IF NOT EXISTS memories (
+        id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        account_id TEXT NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
+        type       TEXT NOT NULL,
+        content    TEXT NOT NULL,
+        source_id  TEXT REFERENCES email_log(id) ON DELETE SET NULL,
+        importance REAL DEFAULT 0.5,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_memories_account ON memories (account_id, created_at DESC);`,
+
+    '010_labels': `
+      CREATE TABLE IF NOT EXISTS email_labels (
+        id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        account_id TEXT NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
+        name       TEXT NOT NULL,
+        color      TEXT DEFAULT '#6366f1',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (account_id, name)
+      );
+      CREATE TABLE IF NOT EXISTS email_log_labels (
+        email_log_id TEXT NOT NULL REFERENCES email_log(id) ON DELETE CASCADE,
+        label_id     TEXT NOT NULL REFERENCES email_labels(id) ON DELETE CASCADE,
+        PRIMARY KEY (email_log_id, label_id)
+      );`,
+
+    '011_email_log_extras': `
+      ALTER TABLE email_log ADD COLUMN IF NOT EXISTS unsubscribe_url TEXT;
+      ALTER TABLE email_log ADD COLUMN IF NOT EXISTS unsubscribed_at TIMESTAMPTZ;
+      ALTER TABLE email_log ADD COLUMN IF NOT EXISTS labels JSONB DEFAULT '[]';`,
   };
 
   for (const [name, sql] of Object.entries(migrations)) {

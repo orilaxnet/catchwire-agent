@@ -135,7 +135,7 @@ export class TelegramInterface implements IUserInterface {
     };
   }
 
-  private handleText(ctx: Context): void {
+  private async handleText(ctx: Context): Promise<void> {
     const userId = String(ctx.from?.id);
     if (!userId) return;
 
@@ -146,6 +146,20 @@ export class TelegramInterface implements IUserInterface {
     }
 
     const text = (ctx.message as any)?.text ?? '';
+
+    // Check if user is in edit mode — if so, send the edited reply and learn from it
+    try {
+      const { rows } = await getPool().query(
+        `SELECT data FROM kv_store WHERE collection = 'edit_state' AND id = $1`,
+        [`edit:${userId}`]
+      );
+      if (rows.length && text.length > 2 && !text.startsWith('/')) {
+        const state = rows[0].data as { emailId: string };
+        await this.handleEditedReply(ctx, userId, state.emailId, text);
+        return;
+      }
+    } catch { /* ignore */ }
+
     this.emit({
       userId,
       interfaceName: this.name,
@@ -153,6 +167,72 @@ export class TelegramInterface implements IUserInterface {
       data:          { text, messageId: (ctx.message as any)?.message_id },
       timestamp:     new Date(),
     });
+  }
+
+  private async handleEditedReply(ctx: Context, userId: string, emailId: string, editedText: string): Promise<void> {
+    try {
+      const pool = getPool();
+
+      // Get original reply and account info
+      const { rows } = await pool.query(
+        `SELECT agent_response, account_id FROM email_log WHERE id = $1`, [emailId]
+      );
+      if (!rows[0]) { await ctx.reply('Email not found.'); return; }
+
+      const originalReply = rows[0].agent_response?.suggestedReplies?.[0]?.body ?? '';
+      const accountId     = rows[0].account_id;
+
+      // Look up account to get from address
+      const { rows: accRows } = await pool.query(
+        `SELECT email_address FROM email_accounts WHERE id = $1`, [accountId]
+      );
+      const { rows: emailRows } = await pool.query(
+        `SELECT from_address, subject FROM email_log WHERE id = $1`, [emailId]
+      );
+      const account   = accRows[0];
+      const emailData = emailRows[0];
+
+      // Send the edited reply
+      if (account && emailData) {
+        const { EmailSender } = await import('../../services/email-sender.ts');
+        const result = await new EmailSender().send(accountId, {
+          from: account.email_address, to: emailData.from_address,
+          subject: emailData.subject?.startsWith('Re:') ? emailData.subject : `Re: ${emailData.subject}`,
+          body: editedText, inReplyTo: emailId,
+        });
+        if (!result.success) { await ctx.reply(`❌ Failed to send: ${result.error}`); return; }
+      }
+
+      // Record action and feedback
+      const { EmailLogRepo, FeedbackRepo } = await import('../../storage/sqlite.adapter.ts');
+      await EmailLogRepo.recordAction(emailId, 'sent_modified');
+      await FeedbackRepo.insert({
+        emailLogId: emailId, accountId,
+        prediction: rows[0].agent_response ?? {}, userAction: 'sent_modified',
+        wasCorrect: false, createdAt: new Date(),
+      });
+
+      // Clear edit state
+      await pool.query(`DELETE FROM kv_store WHERE collection = 'edit_state' AND id = $1`, [`edit:${userId}`]);
+
+      // Learn from the edit in background
+      const { MemoryManager } = await import('../../memory/memory-manager.ts');
+      const { PersonaManager } = await import('../../persona/persona-manager.ts');
+      const { CredentialManager } = await import('../../security/credential-manager.ts');
+      const { Encryption } = await import('../../security/encryption.ts');
+      const enc      = new Encryption(process.env.ENCRYPTION_KEY!);
+      const creds    = new CredentialManager(enc);
+      const personas = new PersonaManager(creds);
+      const persona  = await personas.get(accountId);
+      const memory   = new MemoryManager(persona.llmConfig);
+      memory.learnFromEdit(accountId, emailId, originalReply, editedText).catch(() => {});
+
+      await ctx.reply(`✅ Edited reply sent!\n\n"${editedText.substring(0, 150)}${editedText.length > 150 ? '...' : ''}"\n\n🧠 Agent learned from your edit.`);
+      logger.info('Edited reply sent and learned from', { emailId, userId });
+    } catch (err) {
+      logger.error('handleEditedReply failed', err as Error);
+      await ctx.reply('❌ Failed to send edited reply.');
+    }
   }
 
   private async handleWebApp(ctx: Context): Promise<void> {

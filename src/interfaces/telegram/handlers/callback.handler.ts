@@ -47,6 +47,7 @@ export class CallbackHandler {
       case 'ignore':          await this.ignoreEmail(ctx, emailId); break;
       case 'full_text':       await this.showFullText(ctx, emailId); break;
       case 'wrong_priority':  await this.markWrongPriority(ctx, emailId); break;
+      case 'unsubscribe':     await this.unsubscribeEmail(ctx, emailId); break;
 
       // ── Navigation ────────────────────────────────────────────────────────
       case 'start_add_account':
@@ -204,6 +205,29 @@ export class CallbackHandler {
       `📋 Full suggested replies:\n\n` +
       (a.suggestedReplies ?? []).map((r: any, i: number) => `${i + 1}. ${r.label}:\n${r.body}`).join('\n\n───\n\n')
     );
+  }
+
+  private async unsubscribeEmail(ctx: Context, emailId: string): Promise<void> {
+    const { rows } = await getPool().query(
+      `SELECT unsubscribe_url, account_id FROM email_log WHERE id = $1`, [emailId]
+    );
+    const row = rows[0];
+    if (!row?.unsubscribe_url) { await ctx.editMessageText('❌ No unsubscribe link found.'); return; }
+
+    await ctx.editMessageText('🔄 Unsubscribing...');
+    const { executeUnsubscribe } = await import('../../../services/unsubscriber.ts');
+    const result = await executeUnsubscribe(row.unsubscribe_url);
+
+    if (result.success) {
+      await getPool().query(
+        `UPDATE email_log SET unsubscribed_at = NOW() WHERE id = $1`, [emailId]
+      );
+      await EmailLogRepo.recordAction(emailId, 'ignored');
+      await ctx.editMessageText(`✅ Unsubscribed successfully!\n\nURL: ${row.unsubscribe_url.substring(0, 80)}...`);
+      logger.info('Unsubscribed via Telegram', { emailId, url: row.unsubscribe_url });
+    } else {
+      await ctx.editMessageText(`⚠️ Unsubscribe may have failed: ${result.error}\n\nLink: ${row.unsubscribe_url.substring(0, 100)}`);
+    }
   }
 
   private async markWrongPriority(ctx: Context, emailId: string): Promise<void> {
