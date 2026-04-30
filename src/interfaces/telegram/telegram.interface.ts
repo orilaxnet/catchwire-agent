@@ -160,6 +160,12 @@ export class TelegramInterface implements IUserInterface {
       }
     } catch { /* ignore */ }
 
+    // If text looks like a task command, route to agent task runner
+    if (text.length > 3 && !text.startsWith('/')) {
+      await this.handleTaskCommand(ctx, userId, text);
+      return;
+    }
+
     this.emit({
       userId,
       interfaceName: this.name,
@@ -167,6 +173,58 @@ export class TelegramInterface implements IUserInterface {
       data:          { text, messageId: (ctx.message as any)?.message_id },
       timestamp:     new Date(),
     });
+  }
+
+  private async handleTaskCommand(ctx: Context, userId: string, command: string): Promise<void> {
+    try {
+      // Look up which account(s) this user owns
+      const { rows: acctRows } = await getPool().query(
+        `SELECT ea.id AS account_id FROM email_accounts ea
+         JOIN users u ON u.id = ea.user_id
+         WHERE u.telegram_id = $1 AND ea.enabled = TRUE LIMIT 1`,
+        [userId]
+      );
+      const accountId = acctRows[0]?.account_id;
+      if (!accountId) {
+        await ctx.reply('No email account linked. Use /addaccount first.');
+        return;
+      }
+
+      // Get LLM config for this user
+      const { Encryption }        = await import('../../security/encryption.ts');
+      const { CredentialManager } = await import('../../security/credential-manager.ts');
+      const { PersonaManager }    = await import('../../persona/persona-manager.ts');
+      const enc      = new Encryption(process.env.ENCRYPTION_KEY!);
+      const creds    = new CredentialManager(enc);
+      const personas = new PersonaManager(creds);
+      const persona  = await personas.get(accountId);
+      const llmConfig = persona.llmConfig;
+
+      const { AgentTaskRunner } = await import('../../services/agent-task-runner.ts');
+      const runner = new AgentTaskRunner(llmConfig);
+
+      await ctx.reply('🤔 Parsing your request...');
+
+      const task = await runner.parseCommand(accountId, command);
+
+      // Show the plan and ask for confirmation
+      const planMsg = `📋 *Plan:* ${task.explanation}\n\nProceed?`;
+      const confirmData = JSON.stringify({ action: 'task_confirm', accountId, taskJson: JSON.stringify(task) });
+      const cancelData  = JSON.stringify({ action: 'cancel' });
+
+      await ctx.reply(planMsg, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '✅ Yes, do it', callback_data: confirmData.length <= 64 ? confirmData : await this.encodeCallbackData({ action: 'task_confirm', accountId, taskJson: JSON.stringify(task) }) },
+            { text: '❌ Cancel',     callback_data: cancelData },
+          ]],
+        },
+      });
+    } catch (err) {
+      logger.error('handleTaskCommand failed', err as Error);
+      await ctx.reply('❌ Could not parse your request. Try being more specific, e.g. "unsubscribe all newsletters" or "forward emails from Alex to bob@company.com".');
+    }
   }
 
   private async handleEditedReply(ctx: Context, userId: string, emailId: string, editedText: string): Promise<void> {

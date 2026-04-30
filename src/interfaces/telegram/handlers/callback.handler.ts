@@ -130,6 +130,10 @@ export class CallbackHandler {
         await this.deleteAll(ctx, userId);
         break;
 
+      case 'task_confirm':
+        await this.executeTask(ctx, data.accountId, data.taskJson);
+        break;
+
       default:
         this.iface.emit({ userId, interfaceName: 'telegram', type: 'button_click', data, timestamp: new Date() });
     }
@@ -283,6 +287,45 @@ export class CallbackHandler {
     );
     const labels: Record<string, string> = { full: 'Auto-Send', draft: 'Draft Mode', consultative: 'Consult Only' };
     await ctx.editMessageText(`✅ Autonomy set to: *${labels[level]}*`, { parse_mode: 'Markdown' });
+  }
+
+  private async executeTask(ctx: Context, accountId: string, taskJson: string): Promise<void> {
+    try {
+      const { AgentTaskRunner } = await import('../../../services/agent-task-runner.ts');
+
+      const { Encryption }        = await import('../../../security/encryption.ts');
+      const { CredentialManager } = await import('../../../security/credential-manager.ts');
+      const { PersonaManager }    = await import('../../../persona/persona-manager.ts');
+      const enc      = new Encryption(process.env.ENCRYPTION_KEY!);
+      const creds    = new CredentialManager(enc);
+      const personas = new PersonaManager(creds);
+      const persona  = await personas.get(accountId);
+
+      const task   = JSON.parse(taskJson);
+      const runner = new AgentTaskRunner(persona.llmConfig);
+
+      await ctx.editMessageText('⚙️ Working on it...');
+
+      const result = await runner.execute(accountId, task);
+
+      const lines = [
+        `✅ *Task complete!*`,
+        ``,
+        result.summary,
+        ``,
+        `📊 ${result.succeeded} succeeded${result.failed ? `, ${result.failed} failed` : ''}`,
+      ];
+
+      if (result.details.length && result.action !== 'summarize') {
+        lines.push(``, ...result.details.slice(0, 15));
+        if (result.details.length > 15) lines.push(`…and ${result.details.length - 15} more`);
+      }
+
+      await ctx.editMessageText(lines.join('\n'), { parse_mode: 'Markdown' });
+    } catch (err) {
+      logger.error('executeTask failed', { err });
+      await ctx.editMessageText('❌ Task execution failed. Please try again.');
+    }
   }
 
   private async deleteAll(ctx: Context, userId: string): Promise<void> {

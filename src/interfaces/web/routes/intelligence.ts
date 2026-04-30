@@ -164,4 +164,80 @@ Suggest 3 alternative meeting slots for the next 5 business days. Return JSON:
   }
 });
 
+// ── Agent Task Runner ──────────────────────────────────────────────────────
+
+router.post('/tasks/parse', async (req, res) => {
+  const { accountId, command } = req.body as { accountId?: string; command?: string };
+  if (!accountId || !command?.trim()) {
+    res.status(400).json({ error: 'accountId and command are required' }); return;
+  }
+  try {
+    const { Encryption }        = await import('../../../security/encryption.ts');
+    const { CredentialManager } = await import('../../../security/credential-manager.ts');
+    const { PersonaManager }    = await import('../../../persona/persona-manager.ts');
+    const enc      = new Encryption(process.env.ENCRYPTION_KEY!);
+    const creds    = new CredentialManager(enc);
+    const personas = new PersonaManager(creds);
+    const persona  = await personas.get(accountId);
+
+    const { AgentTaskRunner } = await import('../../../services/agent-task-runner.ts');
+    const runner = new AgentTaskRunner(persona.llmConfig);
+    const task   = await runner.parseCommand(accountId, command);
+    res.json(task);
+  } catch (err) {
+    logger.error('POST /tasks/parse error', { err });
+    res.status(500).json({ error: 'Failed to parse command' });
+  }
+});
+
+router.post('/tasks/execute', async (req, res) => {
+  const { accountId, task, limit = 30 } = req.body as { accountId?: string; task?: any; limit?: number };
+  if (!accountId || !task) {
+    res.status(400).json({ error: 'accountId and task are required' }); return;
+  }
+  try {
+    const { Encryption }        = await import('../../../security/encryption.ts');
+    const { CredentialManager } = await import('../../../security/credential-manager.ts');
+    const { PersonaManager }    = await import('../../../persona/persona-manager.ts');
+    const enc      = new Encryption(process.env.ENCRYPTION_KEY!);
+    const creds    = new CredentialManager(enc);
+    const personas = new PersonaManager(creds);
+    const persona  = await personas.get(accountId);
+
+    const { AgentTaskRunner } = await import('../../../services/agent-task-runner.ts');
+    const runner = new AgentTaskRunner(persona.llmConfig);
+    const result = await runner.execute(accountId, task, Math.min(limit, 50));
+    res.json(result);
+  } catch (err) {
+    logger.error('POST /tasks/execute error', { err });
+    res.status(500).json({ error: 'Failed to execute task' });
+  }
+});
+
+// Convenience: parse + execute in one shot
+router.post('/tasks/run', async (req, res) => {
+  const { accountId, command, limit = 30 } = req.body as { accountId?: string; command?: string; limit?: number };
+  if (!accountId || !command?.trim()) {
+    res.status(400).json({ error: 'accountId and command are required' }); return;
+  }
+  try {
+    const { Encryption }        = await import('../../../security/encryption.ts');
+    const { CredentialManager } = await import('../../../security/credential-manager.ts');
+    const { PersonaManager }    = await import('../../../persona/persona-manager.ts');
+    const enc      = new Encryption(process.env.ENCRYPTION_KEY!);
+    const creds    = new CredentialManager(enc);
+    const personas = new PersonaManager(creds);
+    const persona  = await personas.get(accountId);
+
+    const { AgentTaskRunner } = await import('../../../services/agent-task-runner.ts');
+    const runner = new AgentTaskRunner(persona.llmConfig);
+    const task   = await runner.parseCommand(accountId, command);
+    const result = await runner.execute(accountId, task, Math.min(limit, 50));
+    res.json({ task, result });
+  } catch (err) {
+    logger.error('POST /tasks/run error', { err });
+    res.status(500).json({ error: 'Failed to run task' });
+  }
+});
+
 export default router;
