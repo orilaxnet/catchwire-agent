@@ -12,6 +12,33 @@
 
 ---
 
+## Capabilities
+
+- **Multi-account inbox** — Gmail (OAuth + Pub/Sub), IMAP polling, built-in SMTP server
+- **AI email processing** — intent classification, priority scoring, context-aware reply generation
+- **Auto-send / Draft / Consult** — choose per account or per sender how much autonomy the agent has
+- **Agent Chat sidebar** — natural-language interface in the web UI to query and control the inbox
+- **Autonomous task runner** — give the agent commands like *"unsubscribe all newsletters"*, *"forward invoices to accounting@co.com"*, *"summarize everything from last week"*, *"reply to all cold pitches with a decline"*
+- **Natural-language inbox search** — find emails by describing what you're looking for, no query syntax needed
+- **Auto-unsubscribe** — detects List-Unsubscribe headers and executes HTTP unsubscribes automatically
+- **Persistent memory** — the agent remembers facts about senders and past interactions (semantic + episodic store)
+- **Auto-label assignment** — incoming emails are automatically tagged based on intent, sender, and content rules
+- **Meeting coordination** — detects meeting requests and surfaces available time slots from your calendar
+- **Research-backed replies** — agent can search the web for context before composing a reply on complex topics
+- **Learn from edits** — when you edit a draft reply, the agent stores the edit as a style preference for that sender
+- **Scheduled sending** — queue replies or outbound emails for a specific date and time
+- **Sender overrides** — per-sender or per-domain rules: autonomy level, tone, forward target, time-of-day restrictions
+- **Layered prompt system** — global base prompt + per-intent overrides, fully user-editable in the UI
+- **Prompt Playground** — test any system prompt against a sample email before applying it
+- **Email Templates** — reusable body templates with `{{variable}}` placeholders and live test-render
+- **Plugin Builder** — describe a plugin in plain English, AI writes and sandboxes the code, you enable it
+- **Webhooks** — HMAC-signed HTTP callbacks on any agent event (`email.received`, `reply.sent`, etc.)
+- **Analytics** — email volume, auto-reply acceptance rate, top senders (30-day rolling)
+- **Telegram bot** — manage inbox, approve/reject drafts, and run agent tasks from Telegram
+- **REST API + WebSocket** — full API for integration with n8n, Make, Zapier, or custom agents
+
+---
+
 ## Live Demo
 
 Try the agent with pre-loaded demo data — no sign-up required.
@@ -50,6 +77,18 @@ You control everything: which emails get auto-replied, what tone to use, which L
 - Context-aware reply generation with persona (tone, language, emoji preference)
 - **Layered prompt system**: global base prompt + per-intent overrides, all user-editable
 - **Prompt Playground**: test any prompt against any sample email before applying
+- **Research-backed replies**: agent searches the web before composing replies on complex topics
+- **Learn from edits**: edit a draft → the agent stores your correction as a style memory for that sender
+- **Persistent memory**: semantic + episodic store per sender; memories are injected into future reply prompts
+- **Auto-label assignment**: emails tagged automatically by intent, sender domain, and content rules
+- **Meeting coordination**: extracts meeting requests and surfaces available calendar slots
+
+### Agent Chat & Task Runner
+- **Agent Chat sidebar**: right-side panel in the web UI for natural-language inbox management
+- **Natural-language search**: find emails by description — no query syntax required
+- **Autonomous task execution**: give commands like *"unsubscribe all newsletters"*, *"forward invoices to finance@co.com"*, *"summarize everything about the Q3 project"*, *"reply to all cold pitches with a decline"*
+- **Confirmation flow**: destructive bulk actions show a preview before executing
+- **Auto-unsubscribe**: HTTP-based unsubscription using `List-Unsubscribe` headers
 
 ### Reply Management
 - **Auto-send mode**: reply immediately without human review
@@ -387,6 +426,16 @@ All endpoints are under `/api/`. Protected endpoints require `Authorization: Bea
 |---|---|---|
 | `POST` | `/api/playground/run` | Test a prompt against a sample email |
 
+### Agent Chat & Tasks
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/chat` | Send a message to the agent (NL search, tasks, or conversation) |
+| `POST` | `/api/chat/execute` | Execute a confirmed bulk task (returned from a `confirm` response) |
+| `POST` | `/api/tasks/parse` | Parse a NL command into a structured task plan |
+| `POST` | `/api/tasks/execute` | Execute a parsed task |
+| `POST` | `/api/tasks/run` | Parse + execute in one shot |
+
 ---
 
 ## Connecting External Agents
@@ -441,8 +490,8 @@ In the UI, go to **Plugin Builder** → **Build Plugin** tab, describe what you 
 | Mobile-optimized UI | Responsive but not optimized for small screens |
 | Attachment handling | Metadata only — no download or inline display |
 | Full thread summarization | Per-message summary only |
-| Unsubscribe automation | Not implemented |
 | DKIM / SPF for built-in SMTP | Not implemented — use a relay for production outbound mail |
+| Outbound SMTP relay | Must configure `SMTP_HOST`/`SMTP_PORT` credentials; built-in server receives only |
 
 ---
 

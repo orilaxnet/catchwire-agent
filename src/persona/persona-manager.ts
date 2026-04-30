@@ -17,12 +17,21 @@ export class PersonaManager {
       apiKey = row.llm_api_key_enc ? await this.credManager.getAPIKey(accountId) : undefined;
     } catch { /* no key stored */ }
 
-    const llmConfig: LLMConfig = {
-      provider: row.llm_provider ?? (process.env.LLM_PROVIDER as any) ?? 'openrouter',
-      model:    row.llm_model    ?? process.env.LLM_MODEL ?? 'google/gemini-flash-1.5',
-      apiKey:   apiKey           ?? process.env.LLM_API_KEY,
-      baseUrl:  row.llm_base_url ?? process.env.LLM_BASE_URL ?? undefined,
-    };
+    // When no per-account key is stored, fall back to the full env config to avoid
+    // mixing a DB-stored provider (e.g. openrouter) with an unrelated env API key.
+    const llmConfig: LLMConfig = apiKey
+      ? {
+          provider: (row.llm_provider as any) ?? (process.env.LLM_PROVIDER as any) ?? 'openrouter',
+          model:    row.llm_model    ?? process.env.LLM_MODEL ?? 'google/gemini-flash-1.5',
+          apiKey,
+          baseUrl:  row.llm_base_url ?? process.env.LLM_BASE_URL ?? undefined,
+        }
+      : {
+          provider: (process.env.LLM_PROVIDER as any) ?? 'openrouter',
+          model:    process.env.LLM_MODEL ?? 'google/gemini-flash-1.5',
+          apiKey:   process.env.LLM_API_KEY,
+          baseUrl:  process.env.LLM_BASE_URL ?? undefined,
+        };
 
     return {
       accountId,

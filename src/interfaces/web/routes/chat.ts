@@ -113,8 +113,10 @@ Keep replies concise (2-4 sentences).`;
     res.json({ reply, action: 'chat' });
 
   } catch (err) {
-    logger.error('POST /chat error', { err });
-    res.status(500).json({ error: 'Chat failed' });
+    const msg = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    logger.error('POST /chat error', { msg, stack });
+    res.status(500).json({ error: 'Chat failed', detail: msg });
   }
 });
 
