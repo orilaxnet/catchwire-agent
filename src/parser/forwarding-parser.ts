@@ -6,6 +6,16 @@
 import type { RawEmail, ParsedEmail, Attachment } from '../types/index.ts';
 import { logger } from '../utils/logger.ts';
 
+function decodeMime(s: string): string {
+  return s.replace(/=\?([^?]+)\?([BQ])\?([^?]*)\?=/gi, (_m, _cs, enc, text) => {
+    try {
+      if (enc.toUpperCase() === 'Q')
+        return decodeURIComponent(text.replace(/_/g, ' ').replace(/=([0-9A-F]{2})/gi, '%$1'));
+      return Buffer.from(text, 'base64').toString('utf8');
+    } catch { return text; }
+  });
+}
+
 // ─────────────────────────────────────────────────────────────
 // Regex patterns for identifying forward headers
 // ─────────────────────────────────────────────────────────────
@@ -89,7 +99,7 @@ export class ForwardingParser {
 
       const senderName  = senderMatch[1]?.trim().replace(/"/g, '') ?? '';
       const senderEmail = senderMatch[2]?.trim() ?? senderMatch[1]?.trim() ?? '';
-      const subject     = subjectMatch[1]?.trim() ?? '';
+      const subject     = decodeMime(subjectMatch[1]?.trim() ?? '');
 
       let date: Date;
       try {
@@ -177,7 +187,7 @@ If a field cannot be found, set it to null.
       originalSenderName: nameMatch?.[1]?.trim() ?? '',
       recipientEmail:     '',
       originalDate:       date ? new Date(date) : new Date(raw.receivedAt),
-      subject:            subject.trim(),
+      subject:            decodeMime(subject.trim()),
       bodyText:           this.extractBody(raw.raw),
       bodyHtml:           undefined,
       quotedHistory:      [],
@@ -230,7 +240,7 @@ If a field cannot be found, set it to null.
       originalSenderName: partial.originalSenderName ?? '',
       recipientEmail:     raw.headers['to'] || raw.headers['To'] || '',
       originalDate:       partial.originalDate ?? new Date(raw.receivedAt),
-      subject:            partial.subject ?? '(no subject)',
+      subject:            decodeMime(partial.subject ?? '(no subject)'),
       bodyText:           partial.bodyText ?? '',
       bodyHtml:           partial.bodyHtml,
       quotedHistory:      partial.quotedHistory ?? [],

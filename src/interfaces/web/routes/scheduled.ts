@@ -1,8 +1,35 @@
 import { Router } from 'express';
+import { randomUUID } from 'crypto';
 import { getPool } from '../../../storage/pg-pool.ts';
 import { logger } from '../../../utils/logger.ts';
 
 const router = Router();
+
+router.post('/scheduled', async (req, res) => {
+  try {
+    const { accountId, to, subject, body, sendAt } = req.body as {
+      accountId: string; to: string; subject: string; body: string; sendAt: string;
+    };
+    if (!accountId || !to || !body || !sendAt) {
+      res.status(400).json({ error: 'accountId, to, body, sendAt are required' }); return;
+    }
+    const parsedDate = new Date(sendAt);
+    if (isNaN(parsedDate.getTime()) || parsedDate <= new Date()) {
+      res.status(400).json({ error: 'sendAt must be a future date' }); return;
+    }
+    const id = randomUUID();
+    await getPool().query(
+      `INSERT INTO scheduled_emails (id, account_id, to_address, subject, body, send_at, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'scheduled')`,
+      [id, accountId, to, subject ?? '', body, parsedDate]
+    );
+    logger.info('Scheduled email created', { id, to, sendAt: parsedDate });
+    res.status(201).json({ id, status: 'scheduled', sendAt: parsedDate });
+  } catch (err) {
+    logger.error('POST /scheduled error', { err });
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
 
 router.get('/scheduled', async (req, res) => {
   try {

@@ -33,6 +33,8 @@ export class MailTMPoller {
   private intervalId?: ReturnType<typeof setInterval>;
   private token: string | null = null;
   private seenIds = new Set<string>();
+  private consecutiveErrors = 0;
+  private backoffMs = 0;
 
   constructor(
     private accountId: string,
@@ -42,13 +44,21 @@ export class MailTMPoller {
   ) {}
 
   start(): void {
-    this.poll();
-    this.intervalId = setInterval(() => this.poll(), this.intervalMin * 60 * 1000);
+    this.schedulePoll();
     logger.info('MailTM poller started', { accountId: this.accountId, address: this.config.address });
   }
 
+  private schedulePoll(): void {
+    const delay = this.backoffMs > 0 ? this.backoffMs : this.intervalMin * 60 * 1000;
+    this.intervalId = setTimeout(async () => {
+      await this.poll();
+      if (this.intervalId !== undefined) this.schedulePoll();
+    }, delay);
+  }
+
   stop(): void {
-    if (this.intervalId) clearInterval(this.intervalId);
+    if (this.intervalId) clearTimeout(this.intervalId);
+    this.intervalId = undefined;
   }
 
   private async getToken(): Promise<string> {
@@ -115,9 +125,19 @@ export class MailTMPoller {
 
         logger.info('MailTM message ingested', { subject: full.subject, from: full.from.address });
       }
+      this.consecutiveErrors = 0;
+      this.backoffMs = 0;
     } catch (err) {
-      logger.error('MailTM poll error', { accountId: this.accountId, err });
-      this.token = null; // force re-auth on next cycle
+      this.consecutiveErrors++;
+      // Exponential backoff: 1m, 2m, 4m, 8m, 16m, max 30m
+      this.backoffMs = Math.min(Math.pow(2, this.consecutiveErrors - 1) * 60_000, 30 * 60_000);
+      this.token = null;
+      if (this.consecutiveErrors <= 3 || this.consecutiveErrors % 5 === 0) {
+        logger.warn('MailTM poll error, backing off', {
+          accountId: this.accountId, errors: this.consecutiveErrors,
+          nextRetryMin: Math.round(this.backoffMs / 60_000),
+        });
+      }
     }
   }
 

@@ -13,12 +13,15 @@ export class WebhookDispatcher {
     return this.instance;
   }
 
-  async dispatch(event: WebhookEvent, data: Record<string, unknown>): Promise<void> {
+  async dispatch(event: WebhookEvent, data: Record<string, unknown>, accountId?: string): Promise<void> {
     let rows: any[];
     try {
       ({ rows } = await getPool().query(
-        `SELECT * FROM webhooks WHERE enabled = TRUE AND events @> $1::jsonb`,
-        [JSON.stringify([event])]
+        `SELECT * FROM webhooks
+         WHERE enabled = TRUE
+           AND events @> $1::jsonb
+           AND (account_id IS NULL OR account_id = $2)`,
+        [JSON.stringify([event]), accountId ?? null]
       ));
     } catch { return; }
     if (!rows.length) return;

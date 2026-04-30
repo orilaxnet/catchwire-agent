@@ -288,4 +288,38 @@ router.post('/accounts', async (req, res) => {
   }
 });
 
+// POST /accounts/:id/style-dna — extract writing style from sample emails
+router.post('/accounts/:id/style-dna', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { samples } = req.body as { samples?: string[] };
+    if (!samples?.length || samples.length < 1) {
+      res.status(400).json({ error: 'At least one sample email required' }); return;
+    }
+
+    const { Encryption }        = await import('../../../security/encryption.ts');
+    const { CredentialManager } = await import('../../../security/credential-manager.ts');
+    const { PersonaManager }    = await import('../../../persona/persona-manager.ts');
+    const { StyleExtractor }    = await import('../../../persona/style-extractor.ts');
+    const { LLMRouter }         = await import('../../../llm/router.ts');
+
+    const enc      = new Encryption(process.env.ENCRYPTION_KEY!);
+    const creds    = new CredentialManager(enc);
+    const personas = new PersonaManager(creds);
+    const persona  = await personas.get(id);
+
+    const llm       = new LLMRouter(persona.llmConfig);
+    const extractor = new StyleExtractor(llm);
+    const dna       = await extractor.extract(samples);
+
+    await personas.update(id, { styleDna: dna });
+
+    logger.info('Style DNA extracted', { accountId: id, length: dna.length });
+    res.json({ styleDna: dna });
+  } catch (err) {
+    logger.error('POST /accounts/:id/style-dna error', { err });
+    res.status(500).json({ error: 'Style DNA extraction failed' });
+  }
+});
+
 export default router;

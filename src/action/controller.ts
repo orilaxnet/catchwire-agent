@@ -63,14 +63,14 @@ export class ActionController {
         emailId, accountId: processedEmail.accountId, from: processedEmail.originalSender,
         subject: processedEmail.subject, priority: analysisResult.priority,
         summary: analysisResult.summary, agentDraft: analysisResult.suggestedReplies[0]?.body,
-      });
+      }, processedEmail.accountId);
 
       if (analysisResult.priority === 'critical') {
         webhookDispatcher.dispatch('priority.critical', {
           emailId, accountId: processedEmail.accountId,
           from: processedEmail.originalSender, subject: processedEmail.subject,
           summary: analysisResult.summary,
-        });
+        }, processedEmail.accountId);
       }
 
       await this.decide(emailId, processedEmail, analysisResult, persona.autonomyLevel);

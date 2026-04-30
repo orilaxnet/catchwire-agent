@@ -253,6 +253,13 @@ export async function initPgSchema(): Promise<void> {
       CREATE UNIQUE INDEX IF NOT EXISTS uniq_intent_prompt
         ON prompt_profiles (account_id, intent_type)
         WHERE scope = 'intent' AND intent_type IS NOT NULL;`,
+
+    '007_persona_llm_base_url': `
+      ALTER TABLE personas ADD COLUMN IF NOT EXISTS llm_base_url TEXT;`,
+
+    '008_webhook_account_scope': `
+      ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS account_id TEXT REFERENCES email_accounts(id) ON DELETE CASCADE;
+      CREATE INDEX IF NOT EXISTS idx_webhooks_account ON webhooks (account_id) WHERE account_id IS NOT NULL;`,
   };
 
   for (const [name, sql] of Object.entries(migrations)) {
