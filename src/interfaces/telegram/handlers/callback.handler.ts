@@ -23,8 +23,17 @@ export class CallbackHandler {
     const query = (ctx as any).callbackQuery;
     if (!query?.data) return;
 
+    let rawData = query.data as string;
+    if (rawData.startsWith('cb:')) {
+      const key = rawData.slice(3);
+      const { rows } = await getPool().query(
+        `SELECT data FROM kv_store WHERE collection = 'tg_cb' AND id = $1`, [key]
+      );
+      if (!rows[0]) { await ctx.answerCbQuery('Session expired'); return; }
+      rawData = JSON.stringify(rows[0].data);
+    }
     let data: Record<string, any>;
-    try { data = JSON.parse(query.data); }
+    try { data = JSON.parse(rawData); }
     catch { await ctx.answerCbQuery('Invalid data'); return; }
 
     await ctx.answerCbQuery();

@@ -1,5 +1,7 @@
+import { randomUUID } from 'crypto';
 import { Telegraf, Context } from 'telegraf';
 import type { IUserInterface, InterfaceConfig, InterfaceCapabilities, Message, MessageResult, UserAction } from '../shared/interface-manager.ts';
+import { getPool } from '../../storage/pg-pool.ts';
 import { logger } from '../../utils/logger.ts';
 
 export class TelegramInterface implements IUserInterface {
@@ -72,16 +74,31 @@ export class TelegramInterface implements IUserInterface {
     logger.info('Telegram bot launched');
   }
 
+  private async encodeCallbackData(data: any): Promise<string> {
+    const raw = JSON.stringify(data);
+    if (raw.length <= 64) return raw;
+    // Too large for Telegram's 64-byte limit — store in KV and return a short key
+    const key = randomUUID().replace(/-/g, '').slice(0, 12);
+    await getPool().query(
+      `INSERT INTO kv_store (collection, id, data) VALUES ('tg_cb', $1, $2::jsonb)
+       ON CONFLICT (collection, id) DO UPDATE SET data = EXCLUDED.data`,
+      [key, raw]
+    );
+    return `cb:${key}`;
+  }
+
   async sendMessage(userId: string, message: Message): Promise<MessageResult> {
     try {
-      const markup = message.buttons?.length
-        ? {
-            inline_keyboard: message.buttons.map((b) => [{
-              text:          b.label,
-              callback_data: JSON.stringify(b.action.data).substring(0, 64),
-            }]),
-          }
-        : undefined;
+      let markup: any;
+      if (message.buttons?.length) {
+        const rows = await Promise.all(
+          message.buttons.map(async (b) => [{
+            text:          b.label,
+            callback_data: await this.encodeCallbackData(b.action.data),
+          }])
+        );
+        markup = { inline_keyboard: rows };
+      }
 
       const sent = await this.bot.telegram.sendMessage(
         userId,
