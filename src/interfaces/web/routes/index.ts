@@ -15,6 +15,7 @@ import playgroundRouter    from './playground.ts';
 import promptsRouter       from './prompts.ts';
 import authRouter          from './auth.ts';
 import intelligenceRouter  from './intelligence.ts';
+import chatRouter          from './chat.ts';
 
 // Singleton plugin service — built from env vars, shared across requests
 const _llmRouter = new LLMRouter({
@@ -49,6 +50,7 @@ router.use(webhooksRouter);
 router.use(playgroundRouter);
 router.use(promptsRouter);
 router.use(intelligenceRouter);
+router.use(chatRouter);
 router.use('/plugins', pluginsRouter);
 
 // ── Accounts ────────────────────────────────────────────────────────────────

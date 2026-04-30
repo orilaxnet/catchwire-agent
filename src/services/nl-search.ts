@@ -9,34 +9,57 @@ export class NLSearch {
   constructor(private llmConfig: LLMConfig) {}
 
   async search(accountId: string, query: string, limit = 20): Promise<any[]> {
-    // First try simple keyword search
+    // Keyword search first; fall back to LLM-parsed filters only when nothing found
     const keywordResults = await this.keywordSearch(accountId, query, limit);
-    if (keywordResults.length >= 3) return keywordResults;
+    if (keywordResults.length > 0) return keywordResults;
 
-    // If few results, use LLM to parse the query into filters
+    // Zero keyword results → try LLM-structured filters
     return this.llmSearch(accountId, query, limit);
   }
 
   private async keywordSearch(accountId: string, query: string, limit: number): Promise<any[]> {
-    const terms = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-    const conditions = terms.map((_, i) => `(
-      LOWER(subject) LIKE $${i + 2} OR
-      LOWER(from_address) LIKE $${i + 2} OR
-      LOWER(sender_name) LIKE $${i + 2} OR
-      LOWER(summary) LIKE $${i + 2} OR
-      LOWER(intent) LIKE $${i + 2}
-    )`);
+    const STOP_WORDS = new Set(['the','a','an','and','or','in','on','at','to','for','of','with',
+      'from','by','is','are','was','were','be','been','have','has','had','do','does','did',
+      'all','any','can','will','this','that','these','those','my','your','their','its']);
 
-    const { rows } = await getPool().query(
+    const terms = query.toLowerCase().split(/\s+/)
+      .filter(w => w.length > 2 && !STOP_WORDS.has(w));
+
+    if (!terms.length) return [];
+
+    // Each term is an OR across fields; terms are ANDed together unless there's only one
+    // Use OR between terms to maximise recall, then sort by number of matches
+    const perTermOr = (idx: number) => `(
+      LOWER(subject) LIKE $${idx + 2} OR
+      LOWER(from_address) LIKE $${idx + 2} OR
+      LOWER(sender_name) LIKE $${idx + 2} OR
+      LOWER(summary) LIKE $${idx + 2} OR
+      LOWER(intent) LIKE $${idx + 2}
+    )`;
+
+    // For multiple terms: try AND first (strict), fall back to OR (loose)
+    const strictWhere = terms.map((_, i) => perTermOr(i)).join(' AND ');
+    const { rows: strictRows } = await getPool().query(
       `SELECT id, from_address, sender_name, subject, priority, intent, summary,
               received_at, user_action, labels
        FROM email_log
-       WHERE account_id = $1
-         ${conditions.length ? 'AND ' + conditions.join(' AND ') : ''}
+       WHERE account_id = $1 AND ${strictWhere}
        ORDER BY received_at DESC LIMIT ${limit}`,
       [accountId, ...terms.map(t => `%${t}%`)]
     );
-    return rows;
+    if (strictRows.length > 0) return strictRows;
+
+    // Loose OR fallback — any term matches
+    const looseWhere = terms.map((_, i) => perTermOr(i)).join(' OR ');
+    const { rows: looseRows } = await getPool().query(
+      `SELECT id, from_address, sender_name, subject, priority, intent, summary,
+              received_at, user_action, labels
+       FROM email_log
+       WHERE account_id = $1 AND (${looseWhere})
+       ORDER BY received_at DESC LIMIT ${limit}`,
+      [accountId, ...terms.map(t => `%${t}%`)]
+    );
+    return looseRows;
   }
 
   private async llmSearch(accountId: string, query: string, limit: number): Promise<any[]> {

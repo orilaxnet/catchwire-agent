@@ -33,6 +33,7 @@ export interface ParsedTask {
     replyText?:  string;          // for reply_to_all
   };
   explanation: string;            // human-readable plan shown to user before execution
+  isTask:    boolean;             // false for pure conversational messages
 }
 
 export interface TaskResult {
@@ -58,12 +59,14 @@ export class AgentTaskRunner {
     const { LLMRouter } = await import('../llm/router.ts');
     const llm = new LLMRouter(this.llmConfig);
 
-    const prompt = `You are an email agent assistant. Parse the following user command into a structured task.
+    const prompt = `You are an email agent assistant. Parse the following user message.
+If it is a task command about emails, parse it into a structured task. If it's a greeting, question, or general conversation, set isTask to false.
 
-User command: "${command}"
+User message: "${command}"
 
 Return JSON:
 {
+  "isTask": true or false,
   "action": one of ["search", "unsubscribe_all", "forward_all", "ignore_all", "summarize", "reply_to_all"],
   "query": "NL description of which emails to match, e.g. 'newsletters from the past month'",
   "params": {
@@ -81,6 +84,8 @@ Action meanings:
 - summarize: find emails and produce a combined summary
 - reply_to_all: find emails and send a reply to each
 
+Set isTask=false for: greetings ("hi", "hello"), capability questions ("what can you do"), general chat.
+Set isTask=true for: any command involving emails.
 Only return the JSON object.`;
 
     const raw = await llm.complete(prompt, { maxTokens: 300, temperature: 0.1 });
@@ -245,10 +250,17 @@ Only return the JSON object.`;
       `${i + 1}. From: ${e.sender_name || e.from_address} | Subject: ${e.subject} | Summary: ${e.summary ?? 'N/A'}`
     ).join('\n');
 
-    const prompt = `Summarize these ${emails.length} emails in a concise digest (3-8 sentences). Highlight key themes, important senders, and action items.\n\n${emailList}`;
+    const prompt = `Summarize these ${emails.length} emails in a concise digest (3-8 sentences). Highlight key themes, important senders, and action items. Write plain text only — do not use JSON or code blocks.\n\n${emailList}`;
 
     try {
-      const summary = await llm.complete(prompt, { maxTokens: 400, temperature: 0.3 });
+      let summary = await llm.complete(prompt, { maxTokens: 400, temperature: 0.3 });
+      // Strip JSON wrapper if LLM insists on returning it
+      const jsonMatch = summary.match(/["']?digest["']?\s*:\s*["']([^"']+)["']/i)
+        ?? summary.match(/\{[^}]*"([^"]{20,})"[^}]*\}/);
+      if (jsonMatch) summary = jsonMatch[1];
+      // Strip markdown code blocks
+      summary = summary.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
+
       result.succeeded = emails.length;
       result.details   = [summary];
       result.summary   = summary;

@@ -294,6 +294,17 @@ export const api = {
       }),
   },
 
+  chat: {
+    send: (accountId: string, message: string, history: Array<{role:'user'|'assistant'; content:string}> = []) =>
+      req<{ reply: string; action: string; task?: any; result?: any; previewCount?: number }>(
+        '/chat', { method: 'POST', body: JSON.stringify({ accountId, message, history }) }
+      ),
+    execute: (accountId: string, task: any) =>
+      req<{ reply: string; result: any }>(
+        '/chat/execute', { method: 'POST', body: JSON.stringify({ accountId, task }) }
+      ),
+  },
+
   integrations: {
     info: () => req<{ telegramEnabled: boolean; smtpEnabled: boolean; smtpPort: number; apiBaseUrl: string }>('/integrations'),
   },

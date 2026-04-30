@@ -18,6 +18,7 @@ import { PromptPlayground } from './pages/PromptPlayground.tsx';
 import { Login }            from './pages/Login.tsx';
 import { EmailTemplates }   from './pages/EmailTemplates.tsx';
 import { Onboarding }       from './pages/Onboarding.tsx';
+import { AgentChat }        from './components/AgentChat.tsx';
 import { accounts, selectedAccount } from './signals/store.ts';
 import { api, getToken, setToken, clearToken } from './api/client.ts';
 import './styles/global.css';
@@ -134,6 +135,7 @@ export function App() {
   const showOnboarding = useSignal(false);
   const magicPending   = useSignal(false);
   const isDemo         = useSignal(false);
+  const chatOpen       = useSignal(false);
 
   // Magic link auto-login: ?magic=<token> in URL
   useEffect(() => {
@@ -233,6 +235,8 @@ export function App() {
             <TopAppBar
               title={PAGE_TITLES[path.value] ?? 'Email Agent'}
               info={PAGE_INFO[path.value]}
+              onChatToggle={() => { chatOpen.value = !chatOpen.value; }}
+              chatOpen={chatOpen.value}
             />
           )}
           <div class={isInbox ? 'inbox-wrapper' : 'page-wrapper'}>
@@ -253,6 +257,20 @@ export function App() {
             </Router>
           </div>
         </div>
+
+        {/* Right sidebar: Agent Chat */}
+        <AgentChat open={chatOpen.value} onClose={() => { chatOpen.value = false; }} />
+
+        {/* Floating toggle button for Inbox page (no TopAppBar there) */}
+        {isInbox && (
+          <button
+            class={`chat-fab${chatOpen.value ? ' hidden' : ''}`}
+            onClick={() => { chatOpen.value = true; }}
+            title="Open Agent Chat"
+          >
+            <span class="material-symbols-rounded">smart_toy</span>
+          </button>
+        )}
       </div>
     </LocationProvider>
   );
