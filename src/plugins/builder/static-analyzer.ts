@@ -50,6 +50,22 @@ const FORBIDDEN: Array<{ rule: string; pattern: RegExp; message: string }> = [
     pattern: /__proto__|constructor\s*\[|Object\.setPrototypeOf/,
     message: 'Prototype pollution patterns are not allowed',
   },
+  // VM sandbox escape vectors
+  {
+    rule:    'no-sandbox-escape',
+    pattern: /\bthis\s*\.\s*constructor\b|\bObject\s*\.\s*getPrototypeOf\b|\bglobalThis\b|\bprocess\s*\.\s*mainModule\b|\bprocess\s*\.\s*binding\b/,
+    message: 'VM sandbox escape patterns are not allowed',
+  },
+  {
+    rule:    'no-wasm',
+    pattern: /\bWebAssembly\b/,
+    message: 'WebAssembly is not allowed in plugins',
+  },
+  {
+    rule:    'no-dynamic-import',
+    pattern: /\bimport\s*\(/,
+    message: 'Dynamic import() is not allowed in plugins',
+  },
 ];
 
 export class StaticAnalyzer {

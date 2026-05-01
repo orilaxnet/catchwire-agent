@@ -6,10 +6,11 @@ import { logger } from '../../../utils/logger.ts';
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
   if (!secret || secret.length < 32) {
-    throw new Error('JWT_SECRET env var must be set and at least 32 characters');
+    throw new Error('JWT_SECRET must be set and at least 32 characters (64+ recommended)');
   }
   return secret;
 }
+
 
 export interface JWTPayload {
   sub:        string;

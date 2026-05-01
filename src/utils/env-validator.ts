@@ -10,7 +10,8 @@ const EnvSchema = z.object({
     .regex(/^[0-9a-f]+$/i, 'ENCRYPTION_KEY must be hex string'),
 
   JWT_SECRET: z.string()
-    .min(32, 'JWT_SECRET must be at least 32 characters'),
+    .min(32, 'JWT_SECRET must be at least 32 characters')
+    .refine((s) => new Set(s).size >= 4, 'JWT_SECRET appears trivially weak — use a randomly generated value'),
 
   // Telegram (required to issue JWTs for web dashboard)
   TELEGRAM_BOT_TOKEN:    z.string().min(10).optional().or(z.literal('')),

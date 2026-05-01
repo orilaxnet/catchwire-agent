@@ -157,15 +157,17 @@ export class EmailSender {
   }
 
   private buildRFC822(email: OutboundEmail): string {
+    // Strip CR/LF from all header values to prevent header injection attacks.
+    const h = (v: string) => v.replace(/[\r\n]+/g, ' ').trim();
     const lines = [
-      `From: ${email.from}`,
-      `To: ${email.to}`,
-      `Subject: ${email.subject}`,
+      `From: ${h(email.from)}`,
+      `To: ${h(email.to)}`,
+      `Subject: ${h(email.subject)}`,
       `MIME-Version: 1.0`,
       `Content-Type: text/plain; charset=UTF-8`,
     ];
-    if (email.inReplyTo)  lines.push(`In-Reply-To: ${email.inReplyTo}`);
-    if (email.references) lines.push(`References: ${email.references}`);
+    if (email.inReplyTo)  lines.push(`In-Reply-To: ${h(email.inReplyTo)}`);
+    if (email.references) lines.push(`References: ${h(email.references)}`);
     lines.push('', email.body);
     return lines.join('\r\n');
   }

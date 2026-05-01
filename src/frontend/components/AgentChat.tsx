@@ -18,12 +18,14 @@ function uid() {
 }
 
 function MarkdownText({ text }: { text: string }) {
-  // Minimal markdown: **bold**, *italic*, \n→<br>, bullet lists
+  // Security note: HTML is fully escaped FIRST (& < >) before any markup tags are
+  // introduced. The regex capture groups therefore only ever contain escaped text —
+  // no raw HTML from LLM output can reach the browser unescaped.
   const html = text
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(/\*\*(.+?)\*\*/gs, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/gs,    '<em>$1</em>')
+    .replace(/`(.+?)`/gs,      '<code>$1</code>')
     .replace(/\n• /g, '\n<span class="chat-bullet">•</span> ')
     .replace(/\n/g, '<br>');
   return <span dangerouslySetInnerHTML={{ __html: html }} />;

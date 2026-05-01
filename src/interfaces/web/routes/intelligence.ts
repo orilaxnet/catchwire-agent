@@ -15,8 +15,6 @@ router.post('/search', async (req, res) => {
   if (!query?.trim()) { res.status(400).json({ error: 'query is required' }); return; }
 
   try {
-    let accountFilter = accountId ? `AND account_id = '${accountId.replace(/'/g, '')}'` : '';
-
     // Get LLM config for this account (or default)
     const { Encryption }        = await import('../../../security/encryption.ts');
     const { CredentialManager } = await import('../../../security/credential-manager.ts');

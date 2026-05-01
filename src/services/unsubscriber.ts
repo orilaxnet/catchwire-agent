@@ -43,8 +43,24 @@ export function extractUnsubscribeUrl(body: string, listUnsubscribeHeader?: stri
   return null;
 }
 
+// Block SSRF: private/loopback addresses must not be reachable via unsubscribe URLs.
+const PRIVATE_HOST_RE = /^(localhost|127\.\d+\.\d+\.\d+|::1|0\.0\.0\.0|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|169\.254\.\d+\.\d+|fc00:|fe80:)/i;
+
+function assertSafeUrl(rawUrl: string): void {
+  let parsed: URL;
+  try { parsed = new URL(rawUrl); } catch { throw new Error('Invalid URL'); }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Unsupported protocol: ${parsed.protocol}`);
+  }
+  if (PRIVATE_HOST_RE.test(parsed.hostname)) {
+    throw new Error(`Unsubscribe URL targets a private/loopback address: ${parsed.hostname}`);
+  }
+}
+
 export async function executeUnsubscribe(url: string): Promise<UnsubscribeResult> {
   try {
+    assertSafeUrl(url);
+
     const ctrl    = new AbortController();
     const timeout = setTimeout(() => ctrl.abort(), 15_000);
 
