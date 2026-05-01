@@ -5,12 +5,13 @@
 import { Router } from 'express';
 import { getPool } from '../../../storage/pg-pool.ts';
 import { logger }  from '../../../utils/logger.ts';
+import { rateLimitMiddleware } from '../middleware/rate-limit.middleware.ts';
 
 const router = Router();
 
 // ── Natural Language Search ────────────────────────────────────────────────
 
-router.post('/search', async (req, res) => {
+router.post('/search', rateLimitMiddleware('llm_requests'), async (req, res) => {
   const { accountId, query, limit = 20 } = req.body as { accountId?: string; query?: string; limit?: number };
   if (!query?.trim()) { res.status(400).json({ error: 'query is required' }); return; }
 
@@ -164,7 +165,7 @@ Suggest 3 alternative meeting slots for the next 5 business days. Return JSON:
 
 // ── Agent Task Runner ──────────────────────────────────────────────────────
 
-router.post('/tasks/parse', async (req, res) => {
+router.post('/tasks/parse', rateLimitMiddleware('llm_requests'), async (req, res) => {
   const { accountId, command } = req.body as { accountId?: string; command?: string };
   if (!accountId || !command?.trim()) {
     res.status(400).json({ error: 'accountId and command are required' }); return;
@@ -188,7 +189,7 @@ router.post('/tasks/parse', async (req, res) => {
   }
 });
 
-router.post('/tasks/execute', async (req, res) => {
+router.post('/tasks/execute', rateLimitMiddleware('llm_requests'), async (req, res) => {
   const { accountId, task, limit = 30 } = req.body as { accountId?: string; task?: any; limit?: number };
   if (!accountId || !task) {
     res.status(400).json({ error: 'accountId and task are required' }); return;
@@ -213,7 +214,7 @@ router.post('/tasks/execute', async (req, res) => {
 });
 
 // Convenience: parse + execute in one shot
-router.post('/tasks/run', async (req, res) => {
+router.post('/tasks/run', rateLimitMiddleware('llm_requests'), async (req, res) => {
   const { accountId, command, limit = 30 } = req.body as { accountId?: string; command?: string; limit?: number };
   if (!accountId || !command?.trim()) {
     res.status(400).json({ error: 'accountId and command are required' }); return;

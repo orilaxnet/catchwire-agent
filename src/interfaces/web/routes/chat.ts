@@ -5,10 +5,11 @@
 
 import { Router } from 'express';
 import { logger } from '../../../utils/logger.ts';
+import { rateLimitMiddleware } from '../middleware/rate-limit.middleware.ts';
 
 const router = Router();
 
-router.post('/chat', async (req, res) => {
+router.post('/chat', rateLimitMiddleware('llm_requests'), async (req, res) => {
   const { accountId, message, history = [] } = req.body as {
     accountId?: string;
     message?:   string;
@@ -114,14 +115,13 @@ Keep replies concise (2-4 sentences).`;
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    const stack = err instanceof Error ? err.stack : undefined;
-    logger.error('POST /chat error', { msg, stack });
-    res.status(500).json({ error: 'Chat failed', detail: msg });
+    logger.error('POST /chat error', { msg, stack: err instanceof Error ? err.stack : undefined });
+    res.status(500).json({ error: 'Chat failed' });
   }
 });
 
 // Execute a confirmed task
-router.post('/chat/execute', async (req, res) => {
+router.post('/chat/execute', rateLimitMiddleware('llm_requests'), async (req, res) => {
   const { accountId, task } = req.body as { accountId?: string; task?: any };
   if (!accountId || !task) {
     res.status(400).json({ error: 'accountId and task are required' }); return;

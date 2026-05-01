@@ -109,14 +109,26 @@ export class SandboxRunner {
   }
 
   private buildFilteredFetch(allowedDomains: string[], logs: string[]) {
+    // Private/loopback ranges are blocked unconditionally — even if declared in allowedDomains.
+    const PRIVATE_RE = /^(localhost|127\.|0\.0\.0\.0|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|::1|fc00:|fe80:)/i;
+
     return async (url: string, options?: RequestInit): Promise<Response> => {
-      let hostname: string;
+      let parsed: URL;
       try {
-        hostname = new URL(url).hostname;
+        parsed = new URL(url);
       } catch {
         throw new Error(`Invalid URL: ${url}`);
       }
 
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new Error(`Protocol "${parsed.protocol}" is not allowed in plugins`);
+      }
+
+      if (PRIVATE_RE.test(parsed.hostname)) {
+        throw new Error(`Network access to private/loopback address "${parsed.hostname}" is always blocked`);
+      }
+
+      const hostname = parsed.hostname;
       const allowed = allowedDomains.some((d) => hostname === d || hostname.endsWith('.' + d));
       if (!allowed) {
         throw new Error(
