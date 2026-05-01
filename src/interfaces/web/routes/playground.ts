@@ -28,6 +28,16 @@ router.post('/playground/run', async (req, res) => {
   }
 
   try {
+    const userId = (req as any).user?.sub;
+    if (accountId) {
+      const { getPool } = await import('../../../storage/pg-pool.ts');
+      const { rowCount } = await getPool().query(
+        'SELECT 1 FROM email_accounts WHERE id = $1 AND user_id = $2',
+        [accountId, userId]
+      );
+      if (!rowCount) { res.status(403).json({ error: 'Forbidden' }); return; }
+    }
+
     const { PersonaManager }    = await import('../../../persona/persona-manager.ts');
     const { CredentialManager } = await import('../../../security/credential-manager.ts');
     const { Encryption }        = await import('../../../security/encryption.ts');

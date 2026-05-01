@@ -34,6 +34,9 @@ export class PluginRegistry {
   }
 
   save(spec: PluginSpec, pluginMd: string, code: string, sandboxOk: boolean): RegistryEntry {
+    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(spec.name)) {
+      throw new Error(`Invalid plugin name "${spec.name}" — use only letters, digits, hyphens, underscores (max 64 chars)`);
+    }
     const pluginDir = join(this.dir, spec.name);
     mkdirSync(pluginDir, { recursive: true });
 

@@ -9,6 +9,14 @@ import { rateLimitMiddleware } from '../middleware/rate-limit.middleware.ts';
 
 const router = Router();
 
+async function assertOwnsAccount(accountId: string, userId: string): Promise<boolean> {
+  const { rowCount } = await getPool().query(
+    'SELECT 1 FROM email_accounts WHERE id = $1 AND user_id = $2',
+    [accountId, userId]
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 // ── Natural Language Search ────────────────────────────────────────────────
 
 router.post('/search', rateLimitMiddleware('llm_requests'), async (req, res) => {
@@ -16,6 +24,10 @@ router.post('/search', rateLimitMiddleware('llm_requests'), async (req, res) => 
   if (!query?.trim()) { res.status(400).json({ error: 'query is required' }); return; }
 
   try {
+    const userId = (req as any).user?.sub;
+    if (accountId && !await assertOwnsAccount(accountId, userId)) {
+      res.status(403).json({ error: 'Forbidden' }); return;
+    }
     // Get LLM config for this account (or default)
     const { Encryption }        = await import('../../../security/encryption.ts');
     const { CredentialManager } = await import('../../../security/credential-manager.ts');
@@ -48,6 +60,8 @@ router.get('/labels', async (req, res) => {
   try {
     const { accountId } = req.query as { accountId?: string };
     if (!accountId) { res.status(400).json({ error: 'accountId required' }); return; }
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(accountId, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const { LabelManager } = await import('../../../labels/label-manager.ts');
     res.json(await new LabelManager().list(accountId));
   } catch (err) { res.status(500).json({ error: 'Internal error' }); }
@@ -57,6 +71,8 @@ router.post('/labels', async (req, res) => {
   try {
     const { accountId, name, color } = req.body as { accountId?: string; name?: string; color?: string };
     if (!accountId || !name?.trim()) { res.status(400).json({ error: 'accountId and name required' }); return; }
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(accountId, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const { LabelManager } = await import('../../../labels/label-manager.ts');
     res.status(201).json(await new LabelManager().create(accountId, name, color));
   } catch (err) { res.status(500).json({ error: 'Internal error' }); }
@@ -66,6 +82,8 @@ router.delete('/labels/:id', async (req, res) => {
   try {
     const { accountId } = req.query as { accountId?: string };
     if (!accountId) { res.status(400).json({ error: 'accountId required' }); return; }
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(accountId, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const { LabelManager } = await import('../../../labels/label-manager.ts');
     await new LabelManager().delete(accountId, req.params.id);
     res.json({ success: true });
@@ -78,6 +96,8 @@ router.get('/memory', async (req, res) => {
   try {
     const { accountId, limit = '20' } = req.query as { accountId?: string; limit?: string };
     if (!accountId) { res.status(400).json({ error: 'accountId required' }); return; }
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(accountId, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 20, 100));
     const { rows } = await getPool().query(
       `SELECT id, type, content, importance, created_at FROM memories
@@ -186,6 +206,8 @@ router.post('/tasks/parse', rateLimitMiddleware('llm_requests'), async (req, res
     res.status(400).json({ error: 'accountId and command are required' }); return;
   }
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(accountId, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const { Encryption }        = await import('../../../security/encryption.ts');
     const { CredentialManager } = await import('../../../security/credential-manager.ts');
     const { PersonaManager }    = await import('../../../persona/persona-manager.ts');
@@ -210,6 +232,8 @@ router.post('/tasks/execute', rateLimitMiddleware('llm_requests'), async (req, r
     res.status(400).json({ error: 'accountId and task are required' }); return;
   }
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(accountId, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const { Encryption }        = await import('../../../security/encryption.ts');
     const { CredentialManager } = await import('../../../security/credential-manager.ts');
     const { PersonaManager }    = await import('../../../persona/persona-manager.ts');
@@ -235,6 +259,8 @@ router.post('/tasks/run', rateLimitMiddleware('llm_requests'), async (req, res) 
     res.status(400).json({ error: 'accountId and command are required' }); return;
   }
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(accountId, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const { Encryption }        = await import('../../../security/encryption.ts');
     const { CredentialManager } = await import('../../../security/credential-manager.ts');
     const { PersonaManager }    = await import('../../../persona/persona-manager.ts');

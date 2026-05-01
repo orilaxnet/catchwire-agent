@@ -20,10 +20,15 @@ function isPrivateUrl(raw: string): boolean {
   } catch { return true; }
 }
 
-router.get('/webhooks', async (_req, res) => {
+router.get('/webhooks', async (req, res) => {
   try {
+    const userId = (req as any).user?.sub;
     const { rows } = await getPool().query(
-      `SELECT id, url, events, enabled, created_at FROM webhooks ORDER BY created_at DESC`
+      `SELECT id, url, events, enabled, created_at FROM webhooks
+       WHERE account_id IS NULL
+          OR account_id IN (SELECT id FROM email_accounts WHERE user_id = $1)
+       ORDER BY created_at DESC`,
+      [userId]
     );
     res.json(rows);
   } catch (err) {

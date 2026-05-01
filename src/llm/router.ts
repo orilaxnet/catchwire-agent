@@ -50,7 +50,6 @@ export class LLMRouter {
         logger.warn('Primary LLM failed, trying fallback', {
           primary:  this.primaryConfig.provider,
           fallback: this.fallbackConfig.provider,
-          error:    (primaryError as Error).message
         });
 
         const fallback = this.buildProvider(this.fallbackConfig);
@@ -154,8 +153,8 @@ class OpenRouterProvider implements LLMProvider_I {
     });
 
     if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`OpenRouter error ${response.status}: ${err}`);
+      logger.error('OpenRouter request failed', { status: response.status });
+      throw new Error(`LLM request failed (${response.status})`);
     }
 
     const data = await response.json() as any;
@@ -340,8 +339,8 @@ class CustomProvider implements LLMProvider_I {
     });
 
     if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new Error(`Custom LLM error: ${response.status} ${body.slice(0, 200)}`);
+      logger.error('Custom LLM request failed', { status: response.status });
+      throw new Error(`LLM request failed (${response.status})`);
     }
 
     const data = await response.json() as any;

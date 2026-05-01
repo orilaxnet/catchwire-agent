@@ -53,13 +53,25 @@ router.use(intelligenceRouter);
 router.use(chatRouter);
 router.use('/plugins', pluginsRouter);
 
+// ── Account ownership helper ─────────────────────────────────────────────────
+
+async function assertOwnsAccount(accountId: string, userId: string): Promise<boolean> {
+  const { rowCount } = await getPool().query(
+    'SELECT 1 FROM email_accounts WHERE id = $1 AND user_id = $2',
+    [accountId, userId]
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 // ── Accounts ────────────────────────────────────────────────────────────────
 
-router.get('/accounts', async (_req, res) => {
+router.get('/accounts', async (req, res) => {
   try {
+    const userId = (req as any).user?.sub;
     const { rows } = await getPool().query(
       `SELECT id AS account_id, email_address, account_type AS provider
-       FROM email_accounts WHERE enabled = TRUE ORDER BY created_at ASC`
+       FROM email_accounts WHERE enabled = TRUE AND user_id = $1 ORDER BY created_at ASC`,
+      [userId]
     );
     res.json(rows);
   } catch {
@@ -69,6 +81,8 @@ router.get('/accounts', async (_req, res) => {
 
 router.get('/accounts/:id/stats', async (req, res) => {
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(req.params.id, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     res.json(await analytics.getAccountStats(req.params.id));
   } catch {
     res.status(500).json({ error: 'Internal error' });
@@ -77,6 +91,8 @@ router.get('/accounts/:id/stats', async (req, res) => {
 
 router.get('/accounts/:id/emails', async (req, res) => {
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(req.params.id, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const page = Math.max(1, Math.min(1000, parseInt((req.query.page as string) ?? '1', 10)));
     const { rows } = await getPool().query(
       `SELECT id, account_id, thread_id, from_address, sender_name, subject,
@@ -94,6 +110,8 @@ router.get('/accounts/:id/emails', async (req, res) => {
 
 router.get('/accounts/:id/threads', async (req, res) => {
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(req.params.id, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const { rows } = await getPool().query(
       `SELECT t.*, COUNT(m.id)::int AS message_count
        FROM threads t
@@ -112,6 +130,8 @@ router.get('/accounts/:id/threads', async (req, res) => {
 
 router.get('/accounts/:id/templates', async (req, res) => {
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(req.params.id, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const { rows } = await getPool().query(
       `SELECT * FROM email_templates
        WHERE account_id = $1 OR account_id IS NULL
@@ -215,6 +235,8 @@ router.post('/templates/:id/test', async (req, res) => {
 
 router.get('/accounts/:id/persona', async (req, res) => {
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(req.params.id, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const { rows } = await getPool().query(
       'SELECT * FROM personas WHERE account_id = $1', [req.params.id]
     );

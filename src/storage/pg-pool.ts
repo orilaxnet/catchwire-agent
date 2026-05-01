@@ -14,7 +14,12 @@ export function getPool(): Pool {
     if (!url || !url.startsWith('postgresql')) {
       throw new Error('DATABASE_URL must be a postgresql:// connection string');
     }
-    _pool = new Pool({ connectionString: url, max: 10 });
+    _pool = new Pool({
+      connectionString: url,
+      max: 10,
+      statement_timeout: 30_000,
+      idle_in_transaction_session_timeout: 60_000,
+    });
     _pool.on('error', (err) => logger.error('PG pool error', { err }));
   }
   return _pool;

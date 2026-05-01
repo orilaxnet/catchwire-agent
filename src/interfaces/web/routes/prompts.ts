@@ -4,6 +4,14 @@ import { logger } from '../../../utils/logger.ts';
 
 const router = Router();
 
+async function assertOwnsAccount(accountId: string, userId: string): Promise<boolean> {
+  const { rowCount } = await getPool().query(
+    'SELECT 1 FROM email_accounts WHERE id = $1 AND user_id = $2',
+    [accountId, userId]
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 const VALID_INTENTS = [
   'payment', 'complaint', 'meeting_request', 'follow_up',
   'action_required', 'question', 'deadline', 'order_tracking',
@@ -14,6 +22,8 @@ const VALID_INTENTS = [
 
 router.get('/accounts/:id/prompts', async (req, res) => {
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(req.params.id, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const { rows } = await getPool().query(
       `SELECT * FROM prompt_profiles WHERE account_id = $1 ORDER BY scope, intent_type`,
       [req.params.id]
@@ -30,6 +40,10 @@ router.get('/accounts/:id/prompts', async (req, res) => {
 // scope='intent': upserts per intent_type (always active when present)
 
 router.post('/accounts/:id/prompts', async (req, res) => {
+  const userId = (req as any).user?.sub;
+  if (!await assertOwnsAccount(req.params.id, userId).catch(() => false)) {
+    res.status(403).json({ error: 'Forbidden' }); return;
+  }
   const { name, description, system_prompt, scope = 'global', intent_type, activate } = req.body as {
     name?: string; description?: string; system_prompt?: string;
     scope?: 'global' | 'intent'; intent_type?: string; activate?: boolean;
@@ -97,6 +111,8 @@ router.post('/accounts/:id/prompts', async (req, res) => {
 router.post('/accounts/:accountId/prompts/:id/activate', async (req, res) => {
   const pool = getPool();
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(req.params.accountId, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const { rows } = await pool.query(
       `SELECT * FROM prompt_profiles WHERE id=$1 AND account_id=$2`,
       [req.params.id, req.params.accountId]
@@ -129,6 +145,8 @@ router.post('/accounts/:accountId/prompts/:id/activate', async (req, res) => {
 router.post('/accounts/:id/prompts/deactivate', async (req, res) => {
   const pool = getPool();
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(req.params.id, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     await pool.query(
       `UPDATE prompt_profiles SET is_active=FALSE WHERE account_id=$1 AND scope='global'`,
       [req.params.id]
@@ -149,6 +167,8 @@ router.patch('/accounts/:accountId/prompts/:id', async (req, res) => {
   };
   const pool = getPool();
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(req.params.accountId, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const { rows } = await pool.query(
       `UPDATE prompt_profiles
        SET name=COALESCE($1,name), description=COALESCE($2,description),
@@ -177,6 +197,8 @@ router.patch('/accounts/:accountId/prompts/:id', async (req, res) => {
 router.delete('/accounts/:accountId/prompts/:id', async (req, res) => {
   const pool = getPool();
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(req.params.accountId, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const { rows } = await pool.query(
       `SELECT scope, is_active FROM prompt_profiles WHERE id=$1 AND account_id=$2`,
       [req.params.id, req.params.accountId]
@@ -203,10 +225,14 @@ router.post('/emails/:id/regenerate', async (req, res) => {
 
   const pool = getPool();
   try {
+    const userId = (req as any).user?.sub;
     const { rows: emailRows } = await pool.query(
-      `SELECT id, account_id, from_address, sender_name, subject, body, agent_response, received_at
-       FROM email_log WHERE id=$1`,
-      [req.params.id]
+      `SELECT el.id, el.account_id, el.from_address, el.sender_name, el.subject,
+              el.body, el.agent_response, el.received_at
+       FROM email_log el
+       JOIN email_accounts ea ON ea.id = el.account_id
+       WHERE el.id = $1 AND ea.user_id = $2`,
+      [req.params.id, userId]
     );
     if (!emailRows.length) { res.status(404).json({ error: 'Email not found' }); return; }
     const emailRow = emailRows[0];
