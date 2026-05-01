@@ -33,7 +33,7 @@ router.post('/search', rateLimitMiddleware('llm_requests'), async (req, res) => 
 
     const { NLSearch } = await import('../../../services/nl-search.ts');
     const searcher = new NLSearch(llmConfig);
-    const results  = await searcher.search(accountId ?? 'acc-demo-001', query, Math.min(limit, 50));
+    const results  = await searcher.search(accountId ?? 'acc-demo-001', query, Math.max(1, Math.max(1, Math.min(limit, 50))));
 
     res.json({ query, results, count: results.length });
   } catch (err) {
@@ -78,10 +78,11 @@ router.get('/memory', async (req, res) => {
   try {
     const { accountId, limit = '20' } = req.query as { accountId?: string; limit?: string };
     if (!accountId) { res.status(400).json({ error: 'accountId required' }); return; }
+    const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 20, 100));
     const { rows } = await getPool().query(
       `SELECT id, type, content, importance, created_at FROM memories
        WHERE account_id = $1 ORDER BY importance DESC, created_at DESC LIMIT $2`,
-      [accountId, parseInt(limit)]
+      [accountId, safeLimit]
     );
     res.json(rows);
   } catch (err) { res.status(500).json({ error: 'Internal error' }); }
@@ -205,7 +206,7 @@ router.post('/tasks/execute', rateLimitMiddleware('llm_requests'), async (req, r
 
     const { AgentTaskRunner } = await import('../../../services/agent-task-runner.ts');
     const runner = new AgentTaskRunner(persona.llmConfig);
-    const result = await runner.execute(accountId, task, Math.min(limit, 50));
+    const result = await runner.execute(accountId, task, Math.max(1, Math.min(limit, 50)));
     res.json(result);
   } catch (err) {
     logger.error('POST /tasks/execute error', { err });
@@ -231,7 +232,7 @@ router.post('/tasks/run', rateLimitMiddleware('llm_requests'), async (req, res) 
     const { AgentTaskRunner } = await import('../../../services/agent-task-runner.ts');
     const runner = new AgentTaskRunner(persona.llmConfig);
     const task   = await runner.parseCommand(accountId, command);
-    const result = await runner.execute(accountId, task, Math.min(limit, 50));
+    const result = await runner.execute(accountId, task, Math.max(1, Math.min(limit, 50)));
     res.json({ task, result });
   } catch (err) {
     logger.error('POST /tasks/run error', { err });

@@ -98,19 +98,26 @@ router.post('/auth/login', rateLimitMiddleware('auth_attempts'), async (req, res
     );
 
     const user = rows[0] as { id: string; password_hash: string } | undefined;
-    if (!user || !user.password_hash) {
-      res.status(401).json({ error: 'Invalid username or password' });
-      return;
-    }
 
-    const ok = await verifyPassword(password, user.password_hash);
-    if (!ok) {
+    // Always run scrypt regardless of whether the user exists so that
+    // an attacker cannot distinguish "unknown user" from "wrong password"
+    // via response timing.
+    const DUMMY_HASH = '0000000000000000000000000000000000000000000000000000000000000000:' +
+                       '0000000000000000000000000000000000000000000000000000000000000000' +
+                       '0000000000000000000000000000000000000000000000000000000000000000';
+    const ok = await verifyPassword(password, user?.password_hash ?? DUMMY_HASH);
+
+    if (!user || !user.password_hash || !ok) {
       const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
-      await pool.query(
-        `INSERT INTO audit_log (id, user_id, action, ip_address) VALUES (gen_random_uuid()::text, $1, 'login_failed', $2)`,
-        [user.id, ip]
-      );
-      logger.warn('Login failed — wrong password', { userId: user.id, ip });
+      if (user) {
+        await pool.query(
+          `INSERT INTO audit_log (id, user_id, action, ip_address) VALUES (gen_random_uuid()::text, $1, 'login_failed', $2)`,
+          [user.id, ip]
+        );
+        logger.warn('Login failed — wrong password', { userId: user.id, ip });
+      } else {
+        logger.warn('Login failed — unknown username', { ip });
+      }
       res.status(401).json({ error: 'Invalid username or password' });
       return;
     }

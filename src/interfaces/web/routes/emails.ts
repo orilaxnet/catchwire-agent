@@ -78,8 +78,8 @@ router.post('/emails/:id/reply', async (req, res) => {
     logger.info('Reply sent', { emailId: req.params.id });
     res.json({ success: true, messageId: result.messageId });
   } catch (err: any) {
-    logger.error('POST /emails/:id/reply error', { err });
-    res.status(500).json({ error: err.message });
+    logger.error('POST /emails/:id/reply error', { msg: err?.message, stack: err?.stack });
+    res.status(500).json({ error: 'Internal error' });
   }
 });
 

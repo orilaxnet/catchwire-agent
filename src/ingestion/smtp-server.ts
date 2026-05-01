@@ -51,7 +51,8 @@ export class SMTPIngestion {
 
   async start(): Promise<void> {
     const port = parseInt(process.env.SMTP_PORT || '25');
-    const host = process.env.SMTP_HOST || '0.0.0.0';
+    // Default to loopback — set SMTP_HOST=0.0.0.0 to accept external connections
+    const host = process.env.SMTP_HOST || '127.0.0.1';
 
     return new Promise((resolve, reject) => {
       this.server.listen(port, host, (err?: Error) => {

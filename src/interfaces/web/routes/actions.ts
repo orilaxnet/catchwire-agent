@@ -255,14 +255,22 @@ router.post('/accounts', async (req, res) => {
     );
     if (existing.length) { res.status(409).json({ error: 'Account already exists' }); return; }
 
-    const { rows: users } = await pool.query('SELECT id FROM users LIMIT 1');
-    if (!users.length) { res.status(400).json({ error: 'No user registered' }); return; }
+    // Use authenticated user's ID; fall back to first user for legacy/CLI flows
+    const authedUserId = (req as any).user?.sub;
+    let userId: string;
+    if (authedUserId) {
+      userId = authedUserId;
+    } else {
+      const { rows: users } = await pool.query('SELECT id FROM users LIMIT 1');
+      if (!users.length) { res.status(400).json({ error: 'No user registered' }); return; }
+      userId = users[0].id;
+    }
 
     const id = randomUUID();
     await pool.query(
       `INSERT INTO email_accounts (id, user_id, email_address, display_name, account_type)
        VALUES ($1,$2,$3,$4,$5)`,
-      [id, users[0].id, email_address, display_name ?? email_address, account_type]
+      [id, userId, email_address, display_name ?? email_address, account_type]
     );
 
     // Encrypt and persist IMAP credentials

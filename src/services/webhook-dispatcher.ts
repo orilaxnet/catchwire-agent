@@ -2,6 +2,20 @@ import { createHmac } from 'crypto';
 import { getPool } from '../storage/pg-pool.ts';
 import { logger }   from '../utils/logger.ts';
 
+// Re-checked at delivery time to guard against DNS rebinding: an attacker
+// registers a webhook pointing to a public hostname, then changes DNS to
+// 127.0.0.1 after registration. The POST /webhooks check happens at
+// registration; this check happens at delivery.
+const PRIVATE_IP_RE = /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|::1|0\.0\.0\.0|169\.254\.)/i;
+
+function isSafeWebhookUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    if (!['http:', 'https:'].includes(u.protocol)) return false;
+    return !PRIVATE_IP_RE.test(u.hostname);
+  } catch { return false; }
+}
+
 export type WebhookEvent =
   | 'email.received' | 'email.replied' | 'email.ignored'
   | 'priority.critical' | 'draft.created' | 'account.error';
@@ -31,6 +45,10 @@ export class WebhookDispatcher {
   }
 
   private async fire(hook: any, body: string): Promise<void> {
+    if (!isSafeWebhookUrl(hook.url)) {
+      logger.warn('Webhook delivery skipped — URL no longer resolves to a safe address', { url: hook.url });
+      return;
+    }
     const sig = createHmac('sha256', hook.secret).update(body).digest('hex');
     try {
       const ctrl    = new AbortController();

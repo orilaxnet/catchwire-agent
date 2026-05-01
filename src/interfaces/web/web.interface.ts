@@ -126,7 +126,7 @@ export class WebInterface implements IUserInterface {
   }
 
   private async setupRoutes(): Promise<void> {
-    this.app.get('/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
+    this.app.get('/health', (_req, res) => res.json({ ok: true }));
 
     const { default: apiRouter } = await import('./routes/index.ts');
     this.app.use('/api', rateLimitMiddleware('api_calls'), demoGuard, apiRouter);
