@@ -37,25 +37,31 @@ export function Threads() {
   const selected     = useSignal<string | null>(null);
   const detail       = useSignal<{ thread: Thread; messages: ThreadMessage[] } | null>(null);
   const loadingDet   = useSignal(false);
+  const detailErr    = useSignal('');
+
+  const listErr = useSignal('');
 
   useEffect(() => {
     if (!selectedAccount.value) return;
     loading.value = true;
+    listErr.value = '';
     api.threads.list(selectedAccount.value)
       .then((data) => { threads.value = data as Thread[]; })
-      .catch(console.error)
+      .catch((e: any) => { listErr.value = e.message ?? 'Failed to load threads'; })
       .finally(() => { loading.value = false; });
   }, [selectedAccount.value]);
 
   const openThread = async (threadId: string) => {
-    if (selected.value === threadId) { selected.value = null; detail.value = null; return; }
+    if (selected.value === threadId) { selected.value = null; detail.value = null; detailErr.value = ''; return; }
     selected.value   = threadId;
+    detail.value     = null;
+    detailErr.value  = '';
     loadingDet.value = true;
     try {
       const data = await api.threads.summary(threadId);
       detail.value = data as any;
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      detailErr.value = e.message ?? 'Could not load thread';
     } finally {
       loadingDet.value = false;
     }
@@ -73,7 +79,11 @@ export function Threads() {
   }
 
   if (loading.value) {
-    return <div class="empty-state"><span class="material-symbols-rounded">sync</span><p>Loading threads…</p></div>;
+    return <div class="empty-state"><span class="material-symbols-rounded" style="animation:spin 1s linear infinite">sync</span><p>Loading threads…</p></div>;
+  }
+
+  if (listErr.value) {
+    return <div class="empty-state"><span class="material-symbols-rounded">error</span><p>{listErr.value}</p></div>;
   }
 
   if (threads.value.length === 0) {
@@ -108,6 +118,8 @@ export function Threads() {
             <div style="margin:-4px 0 12px 16px;padding:12px;background:var(--surface-1);border-radius:0 0 var(--r-md) var(--r-md);border:1px solid var(--border)">
               {loadingDet.value ? (
                 <p style="font-size:13px;color:var(--text-muted)">Loading messages…</p>
+              ) : detailErr.value ? (
+                <p style="font-size:13px;color:var(--c-critical)">{detailErr.value}</p>
               ) : detail.value?.messages.map((m) => (
                 <div key={m.id} style="border-bottom:1px solid var(--border);padding:10px 0">
                   <div style="display:flex;justify-content:space-between">

@@ -248,6 +248,16 @@ html, body, #app {
   background: var(--surface);
 }
 
+/* Back button: hidden on desktop, shown only on mobile overlay */
+.detail-back-btn {
+  display: none;
+  height: 32px;
+  width: 32px;
+  padding: 0;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
 .detail-empty {
   flex: 1;
   display: flex; flex-direction: column;
@@ -639,6 +649,7 @@ input.md-input, select.md-input, textarea.md-input {
     z-index: 50;
   }
   .detail-pane-wrapper.visible { display: flex; }
+  .detail-back-btn { display: flex; align-items: center; justify-content: center; }
   :root { --nav-w: 0px; }
   .nav-rail { display: none; }
 }

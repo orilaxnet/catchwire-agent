@@ -123,9 +123,9 @@ function DetailPane({ email, onDone, onBack }: { email: EmailItem | null; onDone
     );
   }
 
-  // Mobile back button rendered inside the pane header
+  // Back button: visible only on mobile (hidden via CSS on desktop)
   const backBtn = onBack ? (
-    <button class="btn btn-ghost" style="margin-right:8px;height:32px;width:32px;padding:0" onClick={onBack}>
+    <button class="detail-back-btn btn btn-ghost" onClick={onBack}>
       <span class="material-symbols-rounded" style="font-size:18px">arrow_back</span>
     </button>
   ) : null;

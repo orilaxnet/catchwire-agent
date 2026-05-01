@@ -1,16 +1,31 @@
 import { h } from 'preact';
 import { useEffect } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import { Sparkline } from '../components/Sparkline.tsx';
 import { stats, selectedAccount } from '../signals/store.ts';
 import { api } from '../api/client.ts';
 
 export function Analytics() {
+  const loading = useSignal(false);
+  const error   = useSignal('');
+
   useEffect(() => {
     if (!selectedAccount.value) return;
+    loading.value = true;
+    error.value   = '';
     api.accounts.stats(selectedAccount.value)
       .then((data) => { stats.value = data; })
-      .catch(console.error);
+      .catch((e) => { error.value = e.message ?? 'Failed to load analytics'; })
+      .finally(() => { loading.value = false; });
   }, [selectedAccount.value]);
+
+  if (loading.value) {
+    return <div class="empty-state"><span class="material-symbols-rounded" style="animation:spin 1s linear infinite">sync</span><p>Loading…</p></div>;
+  }
+
+  if (error.value) {
+    return <div class="empty-state"><span class="material-symbols-rounded">error</span><p>{error.value}</p></div>;
+  }
 
   const s = stats.value;
   if (!s) {
@@ -41,11 +56,11 @@ export function Analytics() {
           <div class="kpi-label">Auto-Sent</div>
         </div>
         <div class="kpi-tile">
-          <div class="kpi-value">{Math.round(s.acceptedRatio * 100)}%</div>
+          <div class="kpi-value">{Math.round((s.acceptedRatio ?? 0) * 100)}%</div>
           <div class="kpi-label">Acceptance Rate</div>
         </div>
         <div class="kpi-tile">
-          <div class="kpi-value">{Math.round(s.avgResponseMs)}ms</div>
+          <div class="kpi-value">{Math.round(s.avgResponseMs ?? 0)}ms</div>
           <div class="kpi-label">Avg Response</div>
         </div>
       </div>

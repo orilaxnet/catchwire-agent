@@ -151,10 +151,10 @@ export function Scheduled() {
                 {/* Content */}
                 <div style="flex:1;min-width:0">
                   <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-                    {(item as any).subject || '(no subject)'}
+                    {item.subject || '(no subject)'}
                   </div>
                   <div style="font-size:12px;color:var(--text-muted);margin-top:2px">
-                    To: {(item as any).to_address}
+                    To: {item.to_address}
                   </div>
                   <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
                     <span class="chip" style={`background:${chip.bg};color:${chip.color};font-size:10px`}>
