@@ -3,7 +3,7 @@ name: security-audit
 description: Run a comprehensive cybersecurity audit of the codebase. Checks 200+ security issues across authentication, authorization, injection, cryptography, SSRF, XSS, secrets exposure, rate limiting, input validation, and more. Reports every finding with severity, file, line number, and exact fix.
 disable-model-invocation: false
 argument-hint: [path or "full"]
-allowed-tools: Bash Read
+allowed-tools: Bash(*) Read(*)
 ---
 
 # Cybersecurity Audit
