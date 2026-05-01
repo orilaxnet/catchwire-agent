@@ -43,7 +43,13 @@ export class TemplatePopulator {
   private async resolve(variable: TemplateVariable, email: ParsedEmail): Promise<string | null> {
     switch (variable.source.type) {
       case 'extract_from_email': {
-        const m = email.bodyText.match(new RegExp(variable.source.pattern, 'i'));
+        const pat = variable.source.pattern;
+        // Guard against ReDoS: reject patterns that are too long or contain
+        // nested quantifiers — the classic exponential-backtracking form.
+        if (!pat || pat.length > 200 || /(\*|\+|\{[\d,]+\}){2,}/.test(pat)) return null;
+        let rx: RegExp;
+        try { rx = new RegExp(pat, 'i'); } catch { return null; }
+        const m = email.bodyText.match(rx);
         return m ? m[1]?.trim() ?? m[0]?.trim() : null;
       }
 

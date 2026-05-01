@@ -142,6 +142,10 @@ export class WebInterface implements IUserInterface {
       import('../../ingestion/gmail-webhook.ts').then(({ GmailWebhook }) => {
         const gmail = new GmailWebhook(() => Promise.resolve());
         const authUrl = gmail.getAuthUrl(state);
+        if (!authUrl.startsWith('https://accounts.google.com/')) {
+          res.status(500).send('Unexpected OAuth URL — cannot redirect');
+          return;
+        }
         res.redirect(authUrl);
       }).catch((err) => {
         logger.error('Gmail OAuth start failed', { err });

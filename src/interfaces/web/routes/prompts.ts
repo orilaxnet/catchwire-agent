@@ -37,6 +37,12 @@ router.post('/accounts/:id/prompts', async (req, res) => {
 
   if (!name?.trim())          { res.status(400).json({ error: 'name is required' }); return; }
   if (!system_prompt?.trim()) { res.status(400).json({ error: 'system_prompt is required' }); return; }
+  if (system_prompt.trim().length > 12_000) {
+    res.status(400).json({ error: 'system_prompt must be ≤12,000 characters' }); return;
+  }
+  if (name.trim().length > 120) {
+    res.status(400).json({ error: 'name must be ≤120 characters' }); return;
+  }
   if (scope === 'intent' && (!intent_type || !VALID_INTENTS.includes(intent_type))) {
     res.status(400).json({ error: `intent_type must be one of: ${VALID_INTENTS.join(', ')}` }); return;
   }

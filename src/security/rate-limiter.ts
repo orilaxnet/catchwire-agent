@@ -9,6 +9,7 @@ const LIMITS: Record<string, { max: number; windowMs: number }> = {
   telegram_msgs: { max: 30,  windowMs: 60_000  },
   api_calls:     { max: 100, windowMs: 60_000  },
   auth_attempts: { max: 5,   windowMs: 300_000 },
+  unsubscribe:   { max: 10,  windowMs: 60_000  },
 };
 
 export class RateLimiter {

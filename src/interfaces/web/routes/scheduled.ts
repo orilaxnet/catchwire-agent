@@ -34,17 +34,25 @@ router.post('/scheduled', async (req, res) => {
 router.get('/scheduled', async (req, res) => {
   try {
     const { accountId, status = 'scheduled' } = req.query as { accountId?: string; status?: string };
+    const userId = (req as any).user?.sub;
     let rows;
     if (accountId) {
+      // Verify the requested account belongs to the authenticated user
       ({ rows } = await getPool().query(
-        `SELECT * FROM scheduled_emails WHERE account_id = $1 AND status = $2
-         ORDER BY send_at ASC LIMIT 100`,
-        [accountId, status]
+        `SELECT se.* FROM scheduled_emails se
+         JOIN email_accounts ea ON ea.id = se.account_id
+         WHERE se.account_id = $1 AND se.status = $2 AND ea.user_id = $3
+         ORDER BY se.send_at ASC LIMIT 100`,
+        [accountId, status, userId]
       ));
     } else {
+      // Scope to all accounts owned by the authenticated user
       ({ rows } = await getPool().query(
-        `SELECT * FROM scheduled_emails WHERE status = $1 ORDER BY send_at ASC LIMIT 100`,
-        [status]
+        `SELECT se.* FROM scheduled_emails se
+         JOIN email_accounts ea ON ea.id = se.account_id
+         WHERE se.status = $1 AND ea.user_id = $2
+         ORDER BY se.send_at ASC LIMIT 100`,
+        [status, userId]
       ));
     }
     res.json(rows);
@@ -56,8 +64,13 @@ router.get('/scheduled', async (req, res) => {
 
 router.delete('/scheduled/:id', async (req, res) => {
   try {
+    const userId = (req as any).user?.sub;
+    // Join email_accounts to verify the authenticated user owns this scheduled email
     const { rows } = await getPool().query(
-      'SELECT status FROM scheduled_emails WHERE id = $1', [req.params.id]
+      `SELECT se.status FROM scheduled_emails se
+       JOIN email_accounts ea ON ea.id = se.account_id
+       WHERE se.id = $1 AND ea.user_id = $2`,
+      [req.params.id, userId]
     );
     const row = rows[0];
     if (!row) { res.status(404).json({ error: 'Scheduled email not found' }); return; }

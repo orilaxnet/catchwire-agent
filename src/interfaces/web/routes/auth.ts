@@ -251,8 +251,12 @@ router.get('/auth/magic/redeem', rateLimitMiddleware('auth_attempts'), async (re
 
   try {
     const { pool } = await getPool();
+
+    // Atomic DELETE...RETURNING prevents race conditions where two simultaneous
+    // requests could both pass the SELECT check before either DELETE runs.
     const { rows } = await pool.query(
-      `SELECT data FROM kv_store WHERE collection = 'magic_link' AND id = $1`, [magic]
+      `DELETE FROM kv_store WHERE collection = 'magic_link' AND id = $1 RETURNING data`,
+      [magic]
     );
 
     if (!rows[0]) { res.status(401).json({ error: 'Invalid or expired link' }); return; }
@@ -260,13 +264,9 @@ router.get('/auth/magic/redeem', rateLimitMiddleware('auth_attempts'), async (re
     const { userId, expiresAt } = rows[0].data as { userId: string; expiresAt: number };
 
     if (Date.now() > expiresAt) {
-      await pool.query(`DELETE FROM kv_store WHERE collection = 'magic_link' AND id = $1`, [magic]);
       res.status(401).json({ error: 'Link has expired — request a new one with /webapp' });
       return;
     }
-
-    // Single-use: delete immediately
-    await pool.query(`DELETE FROM kv_store WHERE collection = 'magic_link' AND id = $1`, [magic]);
 
     const token = signToken({ sub: userId, telegramId: '' });
     logger.info('Magic link redeemed', { userId });

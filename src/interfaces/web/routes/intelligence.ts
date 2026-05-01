@@ -90,14 +90,21 @@ router.get('/memory', async (req, res) => {
 
 router.delete('/memory/:id', async (req, res) => {
   try {
-    await getPool().query(`DELETE FROM memories WHERE id = $1`, [req.params.id]);
+    const userId = (req as any).user?.sub;
+    // Verify the authenticated user owns this memory via the account chain
+    const result = await getPool().query(
+      `DELETE FROM memories WHERE id = $1
+         AND account_id IN (SELECT id FROM email_accounts WHERE user_id = $2)`,
+      [req.params.id, userId]
+    );
+    if (result.rowCount === 0) { res.status(404).json({ error: 'Memory not found' }); return; }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: 'Internal error' }); }
 });
 
 // ── Unsubscribe ────────────────────────────────────────────────────────────
 
-router.post('/emails/:id/unsubscribe', async (req, res) => {
+router.post('/emails/:id/unsubscribe', rateLimitMiddleware('unsubscribe'), async (req, res) => {
   try {
     const { rows } = await getPool().query(
       `SELECT unsubscribe_url, unsubscribed_at FROM email_log WHERE id = $1`, [req.params.id]

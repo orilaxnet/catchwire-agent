@@ -186,7 +186,7 @@ Only return the JSON object.`;
   }
 
   private async runForwardAll(accountId: string, emails: any[], forwardTo: string, result: TaskResult): Promise<void> {
-    if (!forwardTo || !forwardTo.includes('@')) {
+    if (!forwardTo || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forwardTo) || forwardTo.length > 320) {
       result.failed = emails.length;
       result.summary = 'Invalid forward-to address.';
       return;
