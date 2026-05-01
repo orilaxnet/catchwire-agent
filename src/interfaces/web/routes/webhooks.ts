@@ -61,7 +61,15 @@ router.post('/webhooks', async (req, res) => {
 
 router.delete('/webhooks/:id', async (req, res) => {
   try {
-    const result = await getPool().query('DELETE FROM webhooks WHERE id = $1', [req.params.id]);
+    const userId = (req as any).user?.sub;
+    // Allow deleting global webhooks (account_id IS NULL) or webhooks tied
+    // to an account owned by the authenticated user.
+    const result = await getPool().query(
+      `DELETE FROM webhooks WHERE id = $1
+         AND (account_id IS NULL
+              OR account_id IN (SELECT id FROM email_accounts WHERE user_id = $2))`,
+      [req.params.id, userId]
+    );
     if (result.rowCount === 0) { res.status(404).json({ error: 'Webhook not found' }); return; }
     res.json({ success: true });
   } catch (err) {
@@ -73,7 +81,18 @@ router.delete('/webhooks/:id', async (req, res) => {
 router.patch('/webhooks/:id', async (req, res) => {
   try {
     const { enabled, events } = req.body as { enabled?: boolean; events?: string[] };
-    const pool = getPool();
+    const userId = (req as any).user?.sub;
+    const pool   = getPool();
+
+    // Verify ownership before mutating
+    const { rows: owned } = await pool.query(
+      `SELECT id FROM webhooks WHERE id = $1
+         AND (account_id IS NULL
+              OR account_id IN (SELECT id FROM email_accounts WHERE user_id = $2))`,
+      [req.params.id, userId]
+    );
+    if (!owned.length) { res.status(404).json({ error: 'Webhook not found' }); return; }
+
     if (events) {
       const invalid = events.filter((e) => !VALID_EVENTS.includes(e));
       if (invalid.length) { res.status(400).json({ error: `Unknown events: ${invalid.join(', ')}` }); return; }
@@ -83,7 +102,6 @@ router.patch('/webhooks/:id', async (req, res) => {
       await pool.query('UPDATE webhooks SET enabled = $1 WHERE id = $2', [enabled, req.params.id]);
     }
     const { rows } = await pool.query('SELECT * FROM webhooks WHERE id = $1', [req.params.id]);
-    if (!rows.length) { res.status(404).json({ error: 'Webhook not found' }); return; }
     res.json(rows[0]);
   } catch (err) {
     logger.error('PATCH /webhooks/:id error', { err });

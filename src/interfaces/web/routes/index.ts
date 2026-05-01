@@ -135,11 +135,12 @@ router.post('/templates', async (req, res) => {
     res.status(400).json({ error: 'name and body_template are required' }); return;
   }
   try {
+    const userId = (req as any).user?.sub ?? null;
     const { rows } = await getPool().query(
       `INSERT INTO email_templates (name, description, body_template, tone, account_id, user_id)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [name.trim(), description?.trim() ?? null, body_template.trim(),
-       tone ?? 'professional', account_id ?? null, (req as any).userId ?? null]
+       tone ?? 'professional', account_id ?? null, userId]
     );
     res.status(201).json(rows[0]);
   } catch {
@@ -152,6 +153,7 @@ router.patch('/templates/:id', async (req, res) => {
     name?: string; description?: string; body_template?: string; tone?: string;
   };
   try {
+    const userId = (req as any).user?.sub;
     const { rows } = await getPool().query(
       `UPDATE email_templates
        SET name = COALESCE($1, name),
@@ -159,8 +161,8 @@ router.patch('/templates/:id', async (req, res) => {
            body_template = COALESCE($3, body_template),
            tone = COALESCE($4, tone),
            updated_at = NOW()
-       WHERE id = $5 RETURNING *`,
-      [name ?? null, description ?? null, body_template ?? null, tone ?? null, req.params.id]
+       WHERE id = $5 AND (user_id IS NULL OR user_id = $6) RETURNING *`,
+      [name ?? null, description ?? null, body_template ?? null, tone ?? null, req.params.id, userId]
     );
     if (!rows.length) { res.status(404).json({ error: 'Template not found' }); return; }
     res.json(rows[0]);
@@ -171,7 +173,11 @@ router.patch('/templates/:id', async (req, res) => {
 
 router.delete('/templates/:id', async (req, res) => {
   try {
-    const result = await getPool().query('DELETE FROM email_templates WHERE id = $1', [req.params.id]);
+    const userId = (req as any).user?.sub;
+    const result = await getPool().query(
+      'DELETE FROM email_templates WHERE id = $1 AND (user_id IS NULL OR user_id = $2)',
+      [req.params.id, userId]
+    );
     if (result.rowCount === 0) { res.status(404).json({ error: 'Template not found' }); return; }
     res.json({ success: true });
   } catch {
@@ -181,8 +187,10 @@ router.delete('/templates/:id', async (req, res) => {
 
 router.post('/templates/:id/test', async (req, res) => {
   try {
+    const userId = (req as any).user?.sub;
     const { rows } = await getPool().query(
-      'SELECT body_template FROM email_templates WHERE id = $1', [req.params.id]
+      'SELECT body_template FROM email_templates WHERE id = $1 AND (user_id IS NULL OR user_id = $2)',
+      [req.params.id, userId]
     );
     if (!rows.length) { res.status(404).json({ error: 'Template not found' }); return; }
 

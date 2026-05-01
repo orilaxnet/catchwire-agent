@@ -83,6 +83,9 @@ export class WebInterface implements IUserInterface {
   private setupMiddleware(): void {
     // CORS — restrict to same origin in production, or explicit whitelist
     const allowedOrigins = (process.env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (allowedOrigins.includes('*')) {
+      logger.warn('CORS: wildcard origin (*) with credentials=true is insecure — set CORS_ORIGINS to an explicit domain list');
+    }
     this.app.use(cors({
       origin: allowedOrigins.length ? allowedOrigins : false,
       credentials: true,

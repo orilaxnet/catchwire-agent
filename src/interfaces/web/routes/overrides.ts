@@ -14,7 +14,9 @@ const PATCHABLE_COLUMNS = new Set([
 const VALID_AUTONOMY = ['suggest', 'auto_reply', 'full_auto'];
 
 function validateEmail(v: unknown): boolean {
-  return typeof v === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  return typeof v === 'string'
+    && v.length <= 320
+    && /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/.test(v);
 }
 function validateDomain(v: unknown): boolean {
   return typeof v === 'string' && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(v);

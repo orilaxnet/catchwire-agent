@@ -135,7 +135,14 @@ router.get('/emails/:id/meeting-slots', async (req, res) => {
     if (!row) { res.status(404).json({ error: 'Email not found' }); return; }
 
     const agentResp = row.agent_response ?? {};
-    const meetingTimes = agentResp.extractedData?.meetingTimes ?? [];
+
+    // Sanitize email-derived data before embedding in LLM prompt to prevent
+    // prompt injection via crafted email content.
+    const meetingTimes = ((agentResp.extractedData?.meetingTimes ?? []) as unknown[])
+      .filter((t): t is string => typeof t === 'string' && t.length <= 100)
+      .map((t) => t.replace(/['"\\<>\n\r`]/g, '').trim())
+      .slice(0, 10);
+    const safeSubject = String(row.subject ?? '').replace(/['"\\`]/g, '').slice(0, 200);
 
     // Generate suggested slots using LLM
     const llmConfig = {
@@ -148,7 +155,7 @@ router.get('/emails/:id/meeting-slots', async (req, res) => {
     const { LLMRouter } = await import('../../../llm/router.ts');
     const llm    = new LLMRouter(llmConfig);
     const prompt = `A meeting request email has these proposed times: ${meetingTimes.join(', ') || 'not specified'}.
-Subject: "${row.subject}"
+Subject: "${safeSubject}"
 Today is ${new Date().toDateString()}.
 
 Suggest 3 alternative meeting slots for the next 5 business days. Return JSON:

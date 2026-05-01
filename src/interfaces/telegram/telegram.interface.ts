@@ -71,20 +71,37 @@ export class TelegramInterface implements IUserInterface {
 
     // Launch without await — bot.launch() in Telegraf v4 runs indefinitely
     this.bot.launch().catch((err) => logger.error('Telegram bot crashed', err));
+    this.startKvCleanup();
     logger.info('Telegram bot launched');
   }
 
   private async encodeCallbackData(data: any): Promise<string> {
     const raw = JSON.stringify(data);
     if (raw.length <= 64) return raw;
-    // Too large for Telegram's 64-byte limit — store in KV and return a short key
+    // Hard cap: callback payloads > 4 KB are rejected to prevent KV store inflation
+    if (raw.length > 4096) {
+      logger.warn('Telegram callback data exceeds 4 KB limit, dropping oversized payload', { bytes: raw.length });
+      throw new Error('Callback data too large');
+    }
     const key = randomUUID().replace(/-/g, '').slice(0, 12);
     await getPool().query(
       `INSERT INTO kv_store (collection, id, data) VALUES ('tg_cb', $1, $2::jsonb)
-       ON CONFLICT (collection, id) DO UPDATE SET data = EXCLUDED.data`,
+       ON CONFLICT (collection, id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
       [key, raw]
     );
     return `cb:${key}`;
+  }
+
+  private startKvCleanup(): void {
+    // Purge tg_cb entries older than 2 hours every 30 minutes
+    setInterval(async () => {
+      try {
+        const { rowCount } = await getPool().query(
+          `DELETE FROM kv_store WHERE collection = 'tg_cb' AND updated_at < NOW() - INTERVAL '2 hours'`
+        );
+        if (rowCount) logger.debug('Telegram KV cleanup', { deleted: rowCount });
+      } catch (err) { logger.warn('Telegram KV cleanup failed', { err }); }
+    }, 30 * 60 * 1000).unref();
   }
 
   async sendMessage(userId: string, message: Message): Promise<MessageResult> {
