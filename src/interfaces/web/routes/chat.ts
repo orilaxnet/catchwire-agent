@@ -7,8 +7,20 @@ import { Router } from 'express';
 import { getPool } from '../../../storage/pg-pool.ts';
 import { logger } from '../../../utils/logger.ts';
 import { rateLimitMiddleware } from '../middleware/rate-limit.middleware.ts';
+import { isDemoMode } from '../middleware/demo.middleware.ts';
 
 const router = Router();
+
+/** Detect the primary language of a message by script presence. */
+function detectLanguage(text: string): string {
+  if (/[؀-ۿ]/.test(text)) return 'Persian/Farsi';
+  if (/[一-鿿]/.test(text)) return 'Chinese';
+  if (/[぀-ヿ]/.test(text)) return 'Japanese';
+  if (/[가-힯]/.test(text)) return 'Korean';
+  if (/[Ѐ-ӿ]/.test(text)) return 'Russian';
+  if (/[Ͱ-Ͽ]/.test(text)) return 'Greek';
+  return 'en';
+}
 
 async function assertOwnsAccount(accountId: string, userId: string): Promise<boolean> {
   const { rowCount } = await getPool().query(
@@ -44,19 +56,40 @@ router.post('/chat', rateLimitMiddleware('llm_requests'), async (req, res) => {
     const persona  = await personas.get(accountId);
     const llmConfig = persona.llmConfig;
 
+    // Detect user language from message content
+    const userLanguage = detectLanguage(message);
+    const langInstruction = userLanguage !== 'en'
+      ? `IMPORTANT: Always respond in the same language the user is writing in (${userLanguage}). `
+      : '';
+
     const { AgentTaskRunner } = await import('../../../services/agent-task-runner.ts');
     const runner = new AgentTaskRunner(llmConfig);
 
     // Step 1: Try to parse as a task command
     const task = await runner.parseCommand(accountId, message).catch(() => null);
 
+    // Block write actions in demo mode
+    const WRITE_ACTIONS = ['unsubscribe_all', 'forward_all', 'ignore_all', 'reply_to_all'];
+    if (task?.isTask && WRITE_ACTIONS.includes(task.action) && isDemoMode()) {
+      const demoMsg = userLanguage === 'Persian/Farsi'
+        ? '⚠️ در حالت دمو، عملیات تغییر غیرفعال است. برای استفاده کامل پروژه را Fork کنید.'
+        : '⚠️ Demo mode is active — write operations are disabled. Fork the project to self-host your own instance.';
+      res.json({ reply: demoMsg, action: 'demo_blocked' });
+      return;
+    }
+
     if (task?.isTask) {
       // Search: execute immediately
       if (task.action === 'search') {
-        const result = await runner.execute(accountId, task, 10);
-        const reply  = result.processed === 0
-          ? "I didn't find any emails matching your query. Try different keywords."
-          : `Found **${result.processed} email(s)**:\n\n${result.details.slice(0, 8).join('\n')}`;
+        const result = await runner.execute(accountId, task, 10, userLanguage);
+        let reply: string;
+        if (result.processed === 0) {
+          reply = userLanguage === 'Persian/Farsi'
+            ? 'ایمیلی با این مشخصات پیدا نشد. کلمات دیگری را امتحان کنید.'
+            : "I didn't find any emails matching your query. Try different keywords.";
+        } else {
+          reply = `Found **${result.processed} email(s)**:\n\n${result.details.slice(0, 8).join('\n')}`;
+        }
         res.json({ reply, action: 'search', result });
         return;
       }
@@ -70,15 +103,20 @@ router.post('/chat', rateLimitMiddleware('llm_requests'), async (req, res) => {
         const previewLines = preview.slice(0, 4).map(e =>
           `• ${e.sender_name || e.from_address} — ${e.subject?.slice(0, 50) ?? ''}`
         );
-        const reply = `${task.explanation}\n\nI found **${count}** email(s) matching:\n${previewLines.join('\n')}${count > 4 ? `\n…and more` : ''}\n\nShall I proceed?`;
+        const proceed = userLanguage === 'Persian/Farsi' ? 'آیا ادامه دهم؟' : 'Shall I proceed?';
+        const found   = userLanguage === 'Persian/Farsi' ? `${count} ایمیل یافت شد:` : `I found **${count}** email(s) matching:`;
+        const reply   = `${task.explanation}\n\n${found}\n${previewLines.join('\n')}${count > 4 ? `\n…and more` : ''}\n\n${proceed}`;
         res.json({ reply, action: 'confirm', task, previewCount: count });
         return;
       }
 
       // Summarize: execute directly
       if (task.action === 'summarize') {
-        const result = await runner.execute(accountId, task, 20);
-        res.json({ reply: result.summary || 'No emails found to summarize.', action: 'summarize', result });
+        const result = await runner.execute(accountId, task, 20, userLanguage);
+        const fallback = userLanguage === 'Persian/Farsi'
+          ? 'ایمیلی برای خلاصه‌سازی پیدا نشد.'
+          : 'No emails found to summarize.';
+        res.json({ reply: result.summary || fallback, action: 'summarize', result });
         return;
       }
     }
@@ -106,7 +144,7 @@ router.post('/chat', rateLimitMiddleware('llm_requests'), async (req, res) => {
       `${m.role === 'user' ? 'User' : 'Agent'}: ${m.content}`
     ).join('\n');
 
-    const prompt = `You are an intelligent email agent assistant. Help the user manage their inbox.
+    const prompt = `${langInstruction}You are an intelligent email agent assistant. Help the user manage their inbox.
 ${contextBlock}
 ${conversationHistory ? `\nConversation so far:\n${conversationHistory}` : ''}
 

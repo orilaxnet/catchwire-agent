@@ -435,7 +435,7 @@ export function Inbox() {
       <div class="email-list-pane">
         <div class="email-list-header">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-            <div class="email-list-title">Inbox</div>
+            <div class="email-list-title">Emails</div>
             <button class="btn btn-ghost" style="height:28px;padding:0 8px;font-size:12px"
               onClick={() => loadEmails(1)} disabled={loading.value}>
               <span class="material-symbols-rounded" style="font-size:14px">refresh</span>

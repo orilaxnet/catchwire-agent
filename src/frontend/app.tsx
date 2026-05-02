@@ -231,14 +231,12 @@ export function App() {
       <div class={`app-shell${isDemo.value ? ' demo-offset' : ''}`}>
         <NavRail currentPath={path.value} />
         <div class="main-content">
-          {!isInbox && (
-            <TopAppBar
-              title={PAGE_TITLES[path.value] ?? 'Email Agent'}
-              info={PAGE_INFO[path.value]}
-              onChatToggle={() => { chatOpen.value = !chatOpen.value; }}
-              chatOpen={chatOpen.value}
-            />
-          )}
+          <TopAppBar
+            title={isInbox ? 'Inbox' : (PAGE_TITLES[path.value] ?? 'Email Agent')}
+            info={PAGE_INFO[path.value]}
+            onChatToggle={() => { chatOpen.value = !chatOpen.value; }}
+            chatOpen={chatOpen.value}
+          />
           <div class={isInbox ? 'inbox-wrapper' : 'page-wrapper'}>
             <Router onRouteChange={(url) => { path.value = url; }}>
               <Route path="/agent"           component={Inbox}            />
@@ -260,17 +258,6 @@ export function App() {
 
         {/* Right sidebar: Agent Chat */}
         <AgentChat open={chatOpen.value} onClose={() => { chatOpen.value = false; }} />
-
-        {/* Floating toggle button for Inbox page (no TopAppBar there) */}
-        {isInbox && (
-          <button
-            class={`chat-fab${chatOpen.value ? ' hidden' : ''}`}
-            onClick={() => { chatOpen.value = true; }}
-            title="Open Agent Chat"
-          >
-            <span class="material-symbols-rounded">smart_toy</span>
-          </button>
-        )}
       </div>
     </LocationProvider>
   );

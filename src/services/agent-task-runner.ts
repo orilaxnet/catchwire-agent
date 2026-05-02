@@ -45,6 +45,22 @@ export interface TaskResult {
   summary:   string;
 }
 
+/** Convert a nested JSON object returned by the LLM into readable prose lines. */
+function jsonToProse(obj: Record<string, unknown>): string {
+  const lines: string[] = [];
+  for (const [key, value] of Object.entries(obj)) {
+    const title = key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    if (Array.isArray(value)) {
+      lines.push(`**${title}:** ${value.join('; ')}`);
+    } else if (typeof value === 'object' && value !== null) {
+      lines.push(`**${title}:** ${jsonToProse(value as Record<string, unknown>)}`);
+    } else {
+      lines.push(`**${title}:** ${value}`);
+    }
+  }
+  return lines.join('\n');
+}
+
 export class AgentTaskRunner {
   private search:  NLSearch;
   private sender:  EmailSender;
@@ -59,34 +75,41 @@ export class AgentTaskRunner {
     const { LLMRouter } = await import('../llm/router.ts');
     const llm = new LLMRouter(this.llmConfig);
 
-    const prompt = `You are an email agent assistant. Parse the following user message.
-If it is a task command about emails, parse it into a structured task. If it's a greeting, question, or general conversation, set isTask to false.
+    const prompt = `You are an email agent assistant. Parse the user message into a structured task.
 
 User message: "${command}"
 
-Return JSON:
+Return ONLY this JSON:
 {
   "isTask": true or false,
   "action": one of ["search", "unsubscribe_all", "forward_all", "ignore_all", "summarize", "reply_to_all"],
-  "query": "NL description of which emails to match, e.g. 'newsletters from the past month'",
+  "query": "English description of which emails to match (translate if needed)",
   "params": {
     "forwardTo": "email address if forwarding, else null",
     "replyText": "reply text if replying, else null"
   },
-  "explanation": "one sentence plain-English plan, e.g. 'I'll find all newsletters and unsubscribe from each one.'"
+  "explanation": "one sentence plan in the same language as the user message"
 }
 
 Action meanings:
-- search: just find and show matching emails
-- unsubscribe_all: find emails and HTTP-unsubscribe from each
-- forward_all: find emails and forward to an address
-- ignore_all: mark matching emails as ignored
-- summarize: find emails and produce a combined summary
-- reply_to_all: find emails and send a reply to each
+- search: find and list matching emails (use for "show me", "find", "list", "what are", "which emails")
+- summarize: summarize email content (use for "summarize", "digest", "overview", "خلاصه", "چه هستند")
+- unsubscribe_all: unsubscribe from newsletters
+- forward_all: forward emails to an address
+- ignore_all: mark emails as ignored
+- reply_to_all: send a reply to matching emails
 
-Set isTask=false for: greetings ("hi", "hello"), capability questions ("what can you do"), general chat.
-Set isTask=true for: any command involving emails.
-Only return the JSON object.`;
+Query translation guide (always write query in English):
+- "پاسخ نداده / بی‌پاسخ / بدون پاسخ" → "unanswered emails"
+- "فوری / مهم" → "high priority emails"
+- "فاکتور / پرداخت" → "invoice payment emails"
+- "خبرنامه / تبلیغ" → "newsletter marketing emails"
+- "جلسه / قرار ملاقات" → "meeting request emails"
+- "همه / آخرین" → "all recent emails"
+
+Set isTask=false ONLY for: greetings, "what can you do", pure chat with no email intent.
+Set isTask=true for ANY question or command about emails.
+Only return the JSON object, no extra text.`;
 
     const raw = await llm.complete(prompt, { maxTokens: 300, temperature: 0.1 });
     const m   = raw.match(/\{[\s\S]*\}/);
@@ -97,7 +120,7 @@ Only return the JSON object.`;
   }
 
   /** Execute a parsed task and return a result summary. */
-  async execute(accountId: string, task: ParsedTask, limit = 30): Promise<TaskResult> {
+  async execute(accountId: string, task: ParsedTask, limit = 30, userLanguage = 'en'): Promise<TaskResult> {
     const emails = await this.search.search(accountId, task.query, limit);
 
     const result: TaskResult = {
@@ -134,7 +157,7 @@ Only return the JSON object.`;
         break;
 
       case 'summarize':
-        await this.runSummarize(emails, result);
+        await this.runSummarize(emails, result, userLanguage);
         break;
 
       case 'reply_to_all':
@@ -242,7 +265,7 @@ Only return the JSON object.`;
     result.summary = `Marked ${result.succeeded} emails as ignored.`;
   }
 
-  private async runSummarize(emails: any[], result: TaskResult): Promise<void> {
+  private async runSummarize(emails: any[], result: TaskResult, userLanguage = 'en'): Promise<void> {
     const { LLMRouter } = await import('../llm/router.ts');
     const llm = new LLMRouter(this.llmConfig);
 
@@ -250,16 +273,25 @@ Only return the JSON object.`;
       `${i + 1}. From: ${e.sender_name || e.from_address} | Subject: ${e.subject} | Summary: ${e.summary ?? 'N/A'}`
     ).join('\n');
 
-    const prompt = `Summarize these ${emails.length} emails in a concise digest (3-8 sentences). Highlight key themes, important senders, and action items. Write plain text only — do not use JSON or code blocks.\n\n${emailList}`;
+    const langNote = userLanguage !== 'en'
+      ? `IMPORTANT: Write your response in ${userLanguage}. `
+      : '';
+
+    const prompt = `${langNote}Summarize these ${emails.length} emails as a short readable digest. Use plain prose paragraphs — NO JSON, NO code blocks, NO bullet lists of keys. Just write sentences.\n\n${emailList}`;
 
     try {
-      let summary = await llm.complete(prompt, { maxTokens: 400, temperature: 0.3 });
-      // Strip JSON wrapper if LLM insists on returning it
-      const jsonMatch = summary.match(/["']?digest["']?\s*:\s*["']([^"']+)["']/i)
-        ?? summary.match(/\{[^}]*"([^"]{20,})"[^}]*\}/);
-      if (jsonMatch) summary = jsonMatch[1];
-      // Strip markdown code blocks
-      summary = summary.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
+      let summary = await llm.complete(prompt, { maxTokens: 500, temperature: 0.3 });
+
+      // Strip markdown code fences
+      summary = summary.replace(/^```[a-z]*\n?/gim, '').replace(/\n?```$/gim, '').trim();
+
+      // If LLM still returned JSON, convert it to readable prose
+      try {
+        const parsed = JSON.parse(summary);
+        if (typeof parsed === 'object' && parsed !== null) {
+          summary = jsonToProse(parsed);
+        }
+      } catch { /* not JSON — fine */ }
 
       result.succeeded = emails.length;
       result.details   = [summary];
