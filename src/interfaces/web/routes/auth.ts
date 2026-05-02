@@ -1,8 +1,9 @@
 import { Router }   from 'express';
 import { randomUUID, scrypt, randomBytes, timingSafeEqual } from 'crypto';
 import { promisify }  from 'util';
-import { signToken, verifyToken, verifyTelegramInitData } from '../middleware/auth.middleware.ts';
+import { signToken, verifyToken, verifyTelegramInitData, requireAuth } from '../middleware/auth.middleware.ts';
 import { rateLimitMiddleware } from '../middleware/rate-limit.middleware.ts';
+import { getPool } from '../../../storage/pg-pool.ts';
 import { logger } from '../../../utils/logger.ts';
 
 const router    = Router();
@@ -30,7 +31,7 @@ async function verifyPassword(plain: string, stored: string): Promise<boolean> {
 
 router.get('/auth/setup-status', async (_req, res) => {
   try {
-    const { pool } = await getPool();
+    const pool = getPool();
     const { rows } = await pool.query(
       `SELECT 1 FROM users WHERE username IS NOT NULL LIMIT 1`
     );
@@ -53,7 +54,7 @@ router.post('/auth/setup', rateLimitMiddleware('auth_attempts'), async (req, res
   if (password.length < 8)  { res.status(400).json({ error: 'Password must be at least 8 characters' }); return; }
 
   try {
-    const { pool } = await getPool();
+    const pool = getPool();
 
     // Block if any admin already exists
     const { rows: existing } = await pool.query(
@@ -91,7 +92,7 @@ router.post('/auth/login', rateLimitMiddleware('auth_attempts'), async (req, res
   }
 
   try {
-    const { pool } = await getPool();
+    const pool = getPool();
     const { rows } = await pool.query(
       `SELECT id, password_hash FROM users WHERE username = $1 LIMIT 1`,
       [username.trim().toLowerCase()]
@@ -190,7 +191,7 @@ router.post('/auth/telegram', rateLimitMiddleware('auth_attempts'), async (req, 
   }
 
   try {
-    const { pool } = await getPool();
+    const pool = getPool();
     const { rows } = await pool.query(
       `SELECT id FROM users WHERE telegram_id = $1`, [telegramId]
     );
@@ -211,21 +212,20 @@ router.post('/auth/telegram', rateLimitMiddleware('auth_attempts'), async (req, 
 });
 
 // ── POST /auth/magic/generate — bot calls this to make a link ───────────────
-// Internal: only callable with a valid JWT (bot uses a system token)
+// Protected: requires a valid JWT (the bot must authenticate first via /auth/telegram)
 
-router.post('/auth/magic/generate', rateLimitMiddleware('auth_attempts'), async (req, res) => {
+router.post('/auth/magic/generate', requireAuth, rateLimitMiddleware('auth_attempts'), async (req, res) => {
   const { telegramId } = req.body as { telegramId?: string };
   if (!telegramId) { res.status(400).json({ error: 'telegramId required' }); return; }
 
   try {
-    const { pool } = await getPool();
+    const pool = getPool();
     const { rows } = await pool.query(
       `SELECT id FROM users WHERE telegram_id = $1`, [telegramId]
     );
     const user = rows[0] as { id: string } | undefined;
     if (!user) { res.status(404).json({ error: 'User not found — run /start first' }); return; }
 
-    const { randomBytes } = await import('crypto');
     const magic    = randomBytes(24).toString('hex');
     const expiresAt = Date.now() + 10 * 60 * 1000; // 10 min
 
@@ -250,7 +250,7 @@ router.get('/auth/magic/redeem', rateLimitMiddleware('auth_attempts'), async (re
   if (!magic || magic.length < 10) { res.status(400).json({ error: 'Invalid token' }); return; }
 
   try {
-    const { pool } = await getPool();
+    const pool = getPool();
 
     // Atomic DELETE...RETURNING prevents race conditions where two simultaneous
     // requests could both pass the SELECT check before either DELETE runs.
@@ -276,16 +276,5 @@ router.get('/auth/magic/redeem', rateLimitMiddleware('auth_attempts'), async (re
     res.status(500).json({ error: 'Internal error' });
   }
 });
-
-// ── Pool helper ─────────────────────────────────────────────────────────────
-
-let _pool: any;
-async function getPool() {
-  if (!_pool) {
-    const { Pool } = await import('pg' as any);
-    _pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  }
-  return { pool: _pool };
-}
 
 export default router;

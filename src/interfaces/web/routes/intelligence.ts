@@ -126,8 +126,14 @@ router.delete('/memory/:id', async (req, res) => {
 
 router.post('/emails/:id/unsubscribe', rateLimitMiddleware('unsubscribe'), async (req, res) => {
   try {
+    const userId = (req as any).user?.sub;
+    // B08: verify email belongs to the authenticated user's account
     const { rows } = await getPool().query(
-      `SELECT unsubscribe_url, unsubscribed_at FROM email_log WHERE id = $1`, [req.params.id]
+      `SELECT el.unsubscribe_url, el.unsubscribed_at
+       FROM email_log el
+       JOIN email_accounts ea ON ea.id = el.account_id
+       WHERE el.id = $1 AND ea.user_id = $2`,
+      [req.params.id, userId]
     );
     const row = rows[0];
     if (!row) { res.status(404).json({ error: 'Email not found' }); return; }
@@ -148,8 +154,14 @@ router.post('/emails/:id/unsubscribe', rateLimitMiddleware('unsubscribe'), async
 
 router.get('/emails/:id/meeting-slots', async (req, res) => {
   try {
+    const userId = (req as any).user?.sub;
+    // B09: verify email belongs to the authenticated user's account
     const { rows } = await getPool().query(
-      `SELECT agent_response, subject, from_address FROM email_log WHERE id = $1`, [req.params.id]
+      `SELECT el.agent_response, el.subject, el.from_address
+       FROM email_log el
+       JOIN email_accounts ea ON ea.id = el.account_id
+       WHERE el.id = $1 AND ea.user_id = $2`,
+      [req.params.id, userId]
     );
     const row = rows[0];
     if (!row) { res.status(404).json({ error: 'Email not found' }); return; }

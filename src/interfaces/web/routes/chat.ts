@@ -4,10 +4,19 @@
  */
 
 import { Router } from 'express';
+import { getPool } from '../../../storage/pg-pool.ts';
 import { logger } from '../../../utils/logger.ts';
 import { rateLimitMiddleware } from '../middleware/rate-limit.middleware.ts';
 
 const router = Router();
+
+async function assertOwnsAccount(accountId: string, userId: string): Promise<boolean> {
+  const { rowCount } = await getPool().query(
+    'SELECT 1 FROM email_accounts WHERE id = $1 AND user_id = $2',
+    [accountId, userId]
+  );
+  return (rowCount ?? 0) > 0;
+}
 
 router.post('/chat', rateLimitMiddleware('llm_requests'), async (req, res) => {
   const { accountId, message, history = [] } = req.body as {
@@ -22,6 +31,10 @@ router.post('/chat', rateLimitMiddleware('llm_requests'), async (req, res) => {
   }
 
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(accountId, userId)) {
+      res.status(403).json({ error: 'Forbidden' }); return;
+    }
     const { Encryption }        = await import('../../../security/encryption.ts');
     const { CredentialManager } = await import('../../../security/credential-manager.ts');
     const { PersonaManager }    = await import('../../../persona/persona-manager.ts');
@@ -127,6 +140,10 @@ router.post('/chat/execute', rateLimitMiddleware('llm_requests'), async (req, re
     res.status(400).json({ error: 'accountId and task are required' }); return;
   }
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(accountId, userId)) {
+      res.status(403).json({ error: 'Forbidden' }); return;
+    }
     const { Encryption }        = await import('../../../security/encryption.ts');
     const { CredentialManager } = await import('../../../security/credential-manager.ts');
     const { PersonaManager }    = await import('../../../persona/persona-manager.ts');

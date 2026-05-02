@@ -8,6 +8,17 @@ const router = Router();
 
 const ALLOWED_LLM_PROVIDERS = ['openrouter', 'openai', 'gemini', 'claude', 'ollama', 'custom', 'grok'] as const;
 
+// Private/loopback addresses blocked for IMAP test-connection (SSRF guard)
+const PRIVATE_HOST_RE = /^(localhost|127\.\d+\.\d+\.\d+|::1|0\.0\.0\.0|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|169\.254\.\d+\.\d+)/i;
+
+async function assertOwnsAccount(accountId: string, userId: string): Promise<boolean> {
+  const { rowCount } = await getPool().query(
+    'SELECT 1 FROM email_accounts WHERE id = $1 AND user_id = $2',
+    [accountId, userId]
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 async function resolveAccountId(emailId: string, hint?: string): Promise<string> {
   if (hint) return hint;
   const { rows } = await getPool().query(
@@ -50,9 +61,16 @@ router.post('/actions/ignore', async (req, res) => {
   }
 });
 
-router.get('/templates', async (_req, res) => {
+// B04 fixed: filter templates by the authenticated user
+router.get('/templates', async (req, res) => {
   try {
-    const { rows } = await getPool().query('SELECT * FROM email_templates ORDER BY times_used DESC');
+    const userId = (req as any).user?.sub;
+    const { rows } = await getPool().query(
+      `SELECT * FROM email_templates
+       WHERE user_id = $1 OR user_id IS NULL
+       ORDER BY times_used DESC`,
+      [userId]
+    );
     res.json(rows);
   } catch (err) {
     logger.error('list templates error', { err });
@@ -60,84 +78,18 @@ router.get('/templates', async (_req, res) => {
   }
 });
 
-router.post('/templates', async (req, res) => {
-  const { name, description, body_template, tone, account_id } = req.body as {
-    name?: string; description?: string; body_template?: string;
-    tone?: string; account_id?: string;
-  };
-  if (!name?.trim() || !body_template?.trim()) {
-    res.status(400).json({ error: 'name and body_template are required' }); return;
-  }
-  try {
-    const { rows } = await getPool().query(
-      `INSERT INTO email_templates (name, description, body_template, tone, account_id)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [name.trim(), description?.trim() ?? null, body_template.trim(),
-       tone ?? 'professional', account_id ?? null]
-    );
-    res.status(201).json(rows[0]);
-  } catch (err) {
-    logger.error('create template error', { err });
-    res.status(500).json({ error: 'Internal error' });
-  }
-});
+// NOTE: POST /templates, PATCH /templates/:id, DELETE /templates/:id, and
+// POST /templates/:id/test are handled in index.ts with full user_id scoping.
+// They are NOT registered here to avoid shadowing the hardened versions.
 
-router.post('/templates/:id/test', async (req, res) => {
-  try {
-    const { rows } = await getPool().query(
-      'SELECT * FROM email_templates WHERE id = $1', [req.params.id]
-    );
-    const row = rows[0];
-    if (!row) { res.status(404).json({ error: 'Template not found' }); return; }
+// B05 fixed: GET /accounts/:id/persona removed — handled in index.ts with ownership check.
 
-    // Accept both array [{key,value}] directly as body, or {variables: [...]} wrapper
-    const rawVars = Array.isArray(req.body) ? req.body : (req.body.variables ?? req.body ?? []);
-    const variables: Record<string, string> = {};
-    if (Array.isArray(rawVars)) {
-      for (const item of rawVars) {
-        if (typeof item?.key === 'string' && typeof item?.value === 'string'
-          && item.key.length <= 64 && item.value.length <= 2048) {
-          variables[item.key] = item.value;
-        }
-      }
-    } else {
-      for (const [k, v] of Object.entries(rawVars)) {
-        if (typeof k === 'string' && typeof v === 'string' && k.length <= 64 && v.length <= 2048) {
-          variables[k] = v;
-        }
-      }
-    }
-    let rendered = row.body_template as string;
-    for (const [k, v] of Object.entries(variables)) {
-      rendered = rendered.replaceAll(`{{${k}}}`, v);
-    }
-    rendered = rendered.replace(/\{\{[^}]+\}\}/g, '');
-    res.json({ rendered, subject: row.subject_template ?? null });
-  } catch (err) {
-    logger.error('template test error', { err });
-    res.status(400).json({ error: 'Template render failed' });
-  }
-});
-
-router.get('/accounts/:id/persona', async (req, res) => {
-  try {
-    const { PersonaManager }    = await import('../../../persona/persona-manager.ts');
-    const { CredentialManager } = await import('../../../security/credential-manager.ts');
-    const { Encryption }        = await import('../../../security/encryption.ts');
-    const enc     = new Encryption(process.env.ENCRYPTION_KEY!);
-    const creds   = new CredentialManager(enc);
-    const manager = new PersonaManager(creds);
-    const persona = await manager.get(req.params.id);
-    const { llmConfig, ...rest } = persona;
-    res.json({ ...rest, llmProvider: llmConfig.provider, llmModel: llmConfig.model, hasApiKey: Boolean(llmConfig.apiKey) });
-  } catch (err) {
-    logger.error('persona GET error', { err });
-    res.status(500).json({ error: 'Internal error' });
-  }
-});
-
+// H01 fixed: ownership check added to PATCH /accounts/:id/persona
 router.patch('/accounts/:id/persona', async (req, res) => {
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(req.params.id, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
+
     const { PersonaManager }    = await import('../../../persona/persona-manager.ts');
     const { CredentialManager } = await import('../../../security/credential-manager.ts');
     const { Encryption }        = await import('../../../security/encryption.ts');
@@ -182,7 +134,8 @@ function imapErrorMessage(raw: string): string {
     return 'Connection timed out. Check the host and port — for Gmail use imap.gmail.com:993.';
   if (/CERT|certificate|TLS|SSL/i.test(raw))
     return 'SSL/TLS error. Try port 993 with TLS or port 143 without.';
-  return `Connection failed: ${raw}`;
+  // H05: generic fallthrough — do NOT expose raw error details to client
+  return 'Connection failed. Check your IMAP server address, port, username, and password.';
 }
 
 async function testImap(cfg: { host: string; port: number; user: string; pass: string }): Promise<void> {
@@ -192,7 +145,8 @@ async function testImap(cfg: { host: string; port: number; user: string; pass: s
       user: cfg.user, password: cfg.pass,
       host: cfg.host, port: cfg.port,
       tls: cfg.port === 993,
-      tlsOptions: { rejectUnauthorized: false },
+      // H03: rejectUnauthorized must be true; disabling it allows MITM credential interception
+      tlsOptions: { rejectUnauthorized: true },
       authTimeout: 10_000,
       connTimeout: 10_000,
     });
@@ -202,7 +156,7 @@ async function testImap(cfg: { host: string; port: number; user: string; pass: s
   });
 }
 
-// POST /accounts/test-connection — test IMAP before saving
+// H04 fixed: SSRF guard — validate IMAP host is not a private/internal address
 router.post('/accounts/test-connection', async (req, res) => {
   const { host, port, user, pass } = req.body as {
     host?: string; port?: number; user?: string; pass?: string;
@@ -210,8 +164,15 @@ router.post('/accounts/test-connection', async (req, res) => {
   if (!host || !port || !user || !pass) {
     res.status(400).json({ ok: false, error: 'host, port, user, pass are required' }); return;
   }
+  if (PRIVATE_HOST_RE.test(host)) {
+    res.status(400).json({ ok: false, error: 'IMAP host must be a public address' }); return;
+  }
+  const portNum = Number(port);
+  if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+    res.status(400).json({ ok: false, error: 'Invalid port' }); return;
+  }
   try {
-    await testImap({ host, port: Number(port), user, pass });
+    await testImap({ host, port: portNum, user, pass });
     res.json({ ok: true });
   } catch (err: any) {
     res.json({ ok: false, error: imapErrorMessage(err.message ?? String(err)) });
@@ -236,8 +197,12 @@ router.post('/accounts', async (req, res) => {
 
     // Test IMAP connection before saving
     if (account_type === 'imap' && credentials?.imap_pass) {
+      const imapHost = credentials.imap_host ?? 'imap.gmail.com';
+      if (PRIVATE_HOST_RE.test(imapHost)) {
+        res.status(400).json({ error: 'IMAP host must be a public address' }); return;
+      }
       const cfg = {
-        host: credentials.imap_host ?? 'imap.gmail.com',
+        host: imapHost,
         port: credentials.imap_port ?? 993,
         user: credentials.imap_user ?? email_address,
         pass: credentials.imap_pass,
@@ -296,10 +261,13 @@ router.post('/accounts', async (req, res) => {
   }
 });
 
-// POST /accounts/:id/style-dna — extract writing style from sample emails
+// H01 fixed: ownership check on POST /accounts/:id/style-dna
 router.post('/accounts/:id/style-dna', async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(id, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
+
     const { samples } = req.body as { samples?: string[] };
     if (!samples?.length || samples.length < 1) {
       res.status(400).json({ error: 'At least one sample email required' }); return;

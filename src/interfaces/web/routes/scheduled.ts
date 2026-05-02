@@ -5,6 +5,16 @@ import { logger } from '../../../utils/logger.ts';
 
 const router = Router();
 
+const VALID_STATUSES = ['scheduled', 'sent', 'cancelled', 'failed'] as const;
+
+async function assertOwnsAccount(accountId: string, userId: string): Promise<boolean> {
+  const { rowCount } = await getPool().query(
+    'SELECT 1 FROM email_accounts WHERE id = $1 AND user_id = $2',
+    [accountId, userId]
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 router.post('/scheduled', async (req, res) => {
   try {
     const { accountId, to, subject, body, sendAt } = req.body as {
@@ -13,10 +23,18 @@ router.post('/scheduled', async (req, res) => {
     if (!accountId || !to || !body || !sendAt) {
       res.status(400).json({ error: 'accountId, to, body, sendAt are required' }); return;
     }
+    // M03: validate recipient email address
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to) || to.length > 320) {
+      res.status(400).json({ error: 'Invalid to address' }); return;
+    }
     const parsedDate = new Date(sendAt);
     if (isNaN(parsedDate.getTime()) || parsedDate <= new Date()) {
       res.status(400).json({ error: 'sendAt must be a future date' }); return;
     }
+    // B07: verify the authenticated user owns the account
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(accountId, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
+
     const id = randomUUID();
     await getPool().query(
       `INSERT INTO scheduled_emails (id, account_id, to_address, subject, body, send_at, status)
@@ -33,7 +51,9 @@ router.post('/scheduled', async (req, res) => {
 
 router.get('/scheduled', async (req, res) => {
   try {
-    const { accountId, status = 'scheduled' } = req.query as { accountId?: string; status?: string };
+    const { accountId, status: rawStatus = 'scheduled' } = req.query as { accountId?: string; status?: string };
+    // M04: allowlist on status to prevent unexpected query results
+    const status = VALID_STATUSES.includes(rawStatus as any) ? rawStatus : 'scheduled';
     const userId = (req as any).user?.sub;
     let rows;
     if (accountId) {

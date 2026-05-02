@@ -5,6 +5,14 @@ import { logger } from '../../../utils/logger.ts';
 
 const router = Router();
 
+async function assertOwnsAccount(accountId: string, userId: string): Promise<boolean> {
+  const { rowCount } = await getPool().query(
+    'SELECT 1 FROM email_accounts WHERE id = $1 AND user_id = $2',
+    [accountId, userId]
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 const PATCHABLE_COLUMNS = new Set([
   'sender_email', 'sender_domain', 'priority', 'autonomy_level', 'tone',
   'prompt_template', 'auto_reply', 'forward_to', 'subject_contains',
@@ -24,6 +32,8 @@ function validateDomain(v: unknown): boolean {
 
 router.get('/accounts/:id/overrides', async (req, res) => {
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(req.params.id, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const { rows } = await getPool().query(
       `SELECT * FROM sender_overrides
        WHERE account_id = $1 ORDER BY priority DESC, created_at ASC`,
@@ -37,6 +47,8 @@ router.get('/accounts/:id/overrides', async (req, res) => {
 });
 
 router.post('/accounts/:id/overrides', async (req, res) => {
+  const userId = (req as any).user?.sub;
+  if (!await assertOwnsAccount(req.params.id, userId).catch(() => false)) { res.status(403).json({ error: 'Forbidden' }); return; }
   const body = req.body as Record<string, any>;
   if (body.sender_email  && !validateEmail(body.sender_email))   { res.status(400).json({ error: 'Invalid sender_email'  }); return; }
   if (body.sender_domain && !validateDomain(body.sender_domain)) { res.status(400).json({ error: 'Invalid sender_domain' }); return; }
@@ -77,6 +89,8 @@ router.post('/accounts/:id/overrides', async (req, res) => {
 });
 
 router.patch('/accounts/:id/overrides/:overrideId', async (req, res) => {
+  const userId = (req as any).user?.sub;
+  if (!await assertOwnsAccount(req.params.id, userId).catch(() => false)) { res.status(403).json({ error: 'Forbidden' }); return; }
   const body = req.body as Record<string, any>;
   if (body.sender_email  && !validateEmail(body.sender_email))   { res.status(400).json({ error: 'Invalid sender_email'  }); return; }
   if (body.sender_domain && !validateDomain(body.sender_domain)) { res.status(400).json({ error: 'Invalid sender_domain' }); return; }
@@ -126,6 +140,8 @@ router.patch('/accounts/:id/overrides/:overrideId', async (req, res) => {
 
 router.delete('/accounts/:id/overrides/:overrideId', async (req, res) => {
   try {
+    const userId = (req as any).user?.sub;
+    if (!await assertOwnsAccount(req.params.id, userId)) { res.status(403).json({ error: 'Forbidden' }); return; }
     const result = await getPool().query(
       'DELETE FROM sender_overrides WHERE id = $1 AND account_id = $2',
       [req.params.overrideId, req.params.id]

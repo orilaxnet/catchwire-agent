@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { logger } from '../../../utils/logger.ts';
+import { rateLimitMiddleware } from '../middleware/rate-limit.middleware.ts';
 
 const router = Router();
 
 /** POST /playground/run — test a prompt against a sample email */
-router.post('/playground/run', async (req, res) => {
+router.post('/playground/run', rateLimitMiddleware('llm_requests'), async (req, res) => {
   const { accountId, prompt, sampleEmail } = req.body as {
     accountId?: string;
     prompt?:    string;

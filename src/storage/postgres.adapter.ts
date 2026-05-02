@@ -13,7 +13,12 @@ export class PostgresStorage implements IStorage {
 
   async init(): Promise<void> {
     const { Pool } = await import('pg' as any);
-    this.pool = new Pool({ connectionString: this.connectionString, max: 10 });
+    this.pool = new Pool({
+      connectionString: this.connectionString,
+      max: 10,
+      statement_timeout: 30_000,
+      idle_in_transaction_session_timeout: 60_000,
+    });
     await this.runMigrations();
     logger.info('PostgresStorage initialized');
   }
